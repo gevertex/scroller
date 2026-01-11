@@ -29,7 +29,7 @@ GROUND_Y = SCREEN_HEIGHT - 50  # Ground level
 # Obstacle settings
 BASE_SCROLL_SPEED = 4
 MAX_SCROLL_SPEED = 12
-SPEED_INCREMENT = 0.05  # Speed increase per point scored
+POINTS_PER_SPEED_INCREASE = 20  # Score points needed for +1 speed
 MIN_OBSTACLE_WIDTH = 60
 MAX_OBSTACLE_WIDTH = 150
 OBSTACLE_THICKNESS = 20  # Fixed thickness for all obstacles
@@ -68,6 +68,7 @@ DEBRIS_GRAVITY = 0.5  # Gravity for debris (can differ from player)
 
 # Frame rate
 FPS = 60
+TARGET_FRAME_TIME_MS = 1000.0 / 60  # Base physics timing (60fps), actual FPS can be higher
 
 # Jump mechanics
 JUMP_CUT_MULTIPLIER = 0.5  # Velocity multiplier when releasing jump early
@@ -149,10 +150,10 @@ LETTER_SEGMENTS = {
 @dataclass
 class Obstacle:
     """Represents a floating platform obstacle."""
-    x: float
-    y: float
-    width: float
-    height: float
+    x: int
+    y: int
+    width: int
+    height: int
     scored: bool = False
 
 
@@ -189,6 +190,7 @@ class GameState:
     high_score_beaten: bool = False
     jump_buffered: bool = False  # Buffer jump input for same-frame landing
     trail_frame_counter: int = 0  # Counter for trail spawn timing
+    scroll_accumulator: float = 0.0  # Sub-pixel scroll accumulator for smooth movement
     obstacles: List[Obstacle] = field(default_factory=list)
     debris: List[Debris] = field(default_factory=list)
     trail: List[TrailPoint] = field(default_factory=list)
@@ -277,9 +279,18 @@ def init_pygame() -> Game:
     """
     global _game
     pygame.init()
+
+    # Check if vsync is supported
     screen = pygame.display.set_mode(
         (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF, vsync=1
     )
+
+    # Print display info for diagnostics
+    display_info = pygame.display.Info()
+    print(f"Display: {display_info.current_w}x{display_info.current_h}")
+    print(f"SDL version: {pygame.get_sdl_version()}")
+    print(f"Display driver: {pygame.display.get_driver()}")
+
     pygame.display.set_caption("Jump Game")
 
     # Try to load font, but handle if unavailable (Python 3.14 compatibility)
@@ -361,7 +372,7 @@ def generate_obstacle(
 
 def draw_player(x: float, y: float) -> None:
     """Draw the player as a white outlined rectangle."""
-    pygame.draw.rect(_game.screen, WHITE, (x, y, PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
+    pygame.draw.rect(_game.screen, WHITE, (round(x), round(y), PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
 
 
 def draw_trail(trail: List[TrailPoint]) -> None:
@@ -378,7 +389,7 @@ def draw_trail(trail: List[TrailPoint]) -> None:
         color = (color_value, color_value, color_value)
         pygame.draw.rect(
             _game.screen, color,
-            (point.x, point.y, TRAIL_POINT_SIZE, TRAIL_POINT_SIZE)
+            (round(point.x), round(point.y), TRAIL_POINT_SIZE, TRAIL_POINT_SIZE)
         )
 
 
@@ -468,8 +479,8 @@ def draw_score(score: int, high_score: int) -> None:
 
 def draw_obstacle(obstacle: Obstacle) -> None:
     """Draw an obstacle as a solid white rectangle."""
-    pygame.draw.rect(_game.screen, WHITE, (obstacle.x, obstacle.y,
-                                           obstacle.width, obstacle.height))
+    pygame.draw.rect(_game.screen, WHITE, (round(obstacle.x), round(obstacle.y),
+                                           round(obstacle.width), round(obstacle.height)))
 
 
 def draw_text(text: str, y_position: float, size: int = 20, color: tuple = WHITE) -> None:
@@ -605,22 +616,23 @@ def generate_debris(player_x: float, player_y: float) -> List[Debris]:
     return debris_list
 
 
-def update_debris(debris_list: List[Debris]) -> None:
+def update_debris(debris_list: List[Debris], dt: float = 1.0) -> None:
     """Update debris physics - gravity, movement, and ground bouncing.
 
     Args:
         debris_list: List of Debris instances.
+        dt: Delta time factor for frame-rate independent physics.
     """
     for debris in debris_list:
-        # Apply gravity
-        debris.vel_y += DEBRIS_GRAVITY
+        # Apply gravity (scaled by dt)
+        debris.vel_y += DEBRIS_GRAVITY * dt
 
-        # Apply friction to horizontal movement
-        debris.vel_x *= DEBRIS_FRICTION
+        # Apply friction to horizontal movement (use pow for dt-independent friction)
+        debris.vel_x *= DEBRIS_FRICTION ** dt
 
-        # Update position
-        debris.x += debris.vel_x
-        debris.y += debris.vel_y
+        # Update position (scaled by dt)
+        debris.x += debris.vel_x * dt
+        debris.y += debris.vel_y * dt
 
         # Ground collision and bounce
         if debris.y + debris.size >= GROUND_Y:
@@ -684,16 +696,19 @@ def check_obstacle_collision(player_x: float, player_y: float, prev_player_y: fl
     return False
 
 
-def get_scroll_speed(score: int) -> float:
+def get_scroll_speed(score: int) -> int:
     """Calculate scroll speed based on current score.
+
+    Speed increases by 1 for every POINTS_PER_SPEED_INCREASE points scored,
+    using integer math to avoid floating-point accumulation issues.
 
     Args:
         score: Current game score.
 
     Returns:
-        Scroll speed capped at MAX_SCROLL_SPEED.
+        Integer scroll speed capped at MAX_SCROLL_SPEED.
     """
-    speed = BASE_SCROLL_SPEED + (score * SPEED_INCREMENT)
+    speed = BASE_SCROLL_SPEED + (score // POINTS_PER_SPEED_INCREASE)
     return min(speed, MAX_SCROLL_SPEED)
 
 
@@ -762,8 +777,30 @@ def main() -> None:
     # Initialize game state
     state = reset_game()
 
+    # Frame timing diagnostics
+    frame_times = []
+    frame_count = 0
+
     running = True
     while running:
+        # Cap frame rate and get actual elapsed time for delta-time calculations
+        dt_ms = game.clock.tick(FPS)
+        # Calculate delta factor (1.0 at target FPS, higher if frame took longer)
+        dt = dt_ms / TARGET_FRAME_TIME_MS if dt_ms > 0 else 1.0
+
+        # Track frame times for diagnostics
+        frame_times.append(dt_ms)
+        frame_count += 1
+        if frame_count % 120 == 0:  # Print every 2 seconds
+            avg = sum(frame_times) / len(frame_times)
+            min_t = min(frame_times)
+            max_t = max(frame_times)
+            variance = max_t - min_t
+            print(f"Frame timing (last 120): avg={avg:.1f}ms, min={min_t}ms, max={max_t}ms, variance={variance}ms")
+            if variance > 5:
+                print("  ^ High variance suggests vsync may not be working properly")
+            frame_times = []
+
         # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -802,9 +839,9 @@ def main() -> None:
             # Store previous position for collision detection
             prev_player_y = state.player_y
 
-            # Apply gravity
-            state.player_velocity_y += GRAVITY
-            state.player_y += state.player_velocity_y
+            # Apply gravity (scaled by delta-time for frame-rate independence)
+            state.player_velocity_y += GRAVITY * dt
+            state.player_y += state.player_velocity_y * dt
 
             # Update jump trail
             if state.player_velocity_y < 0:  # Ascending - spawn new trail points
@@ -825,7 +862,7 @@ def main() -> None:
                 # Velocity ranges from JUMP_STRENGTH (-15) to 0
                 # Fade rate increases as velocity approaches 0
                 fade_rate = 1.0 - (state.player_velocity_y / JUMP_STRENGTH)
-                fade_amount = TRAIL_FADE_RATE + (TRAIL_FADE_RATE * fade_rate)
+                fade_amount = (TRAIL_FADE_RATE + (TRAIL_FADE_RATE * fade_rate)) * dt
                 for point in state.trail:
                     point.opacity -= fade_amount
             else:
@@ -833,7 +870,7 @@ def main() -> None:
                 state.trail_frame_counter = 0
                 # Continue fading existing trail points
                 for point in state.trail:
-                    point.opacity -= TRAIL_FADE_RATE * 2  # Fade faster after apex
+                    point.opacity -= TRAIL_FADE_RATE * 2 * dt  # Fade faster after apex
 
             # Remove fully faded or off-screen points
             state.trail = [p for p in state.trail if p.opacity > 0 and p.x > -TRAIL_POINT_SIZE]
@@ -885,6 +922,8 @@ def main() -> None:
                 state.jump_buffered = False
 
             # Move obstacles (speed increases with score)
+            # Use fixed timestep for consistent pixel-perfect scrolling
+            # (vsync ensures steady 60fps, so delta-time compensation causes more jitter than it fixes)
             current_speed = get_scroll_speed(state.score)
             for obstacle in state.obstacles:
                 obstacle.x -= current_speed
@@ -906,7 +945,7 @@ def main() -> None:
 
         # Update debris physics during game over
         if state.game_over and state.debris:
-            update_debris(state.debris)
+            update_debris(state.debris, dt)
 
         # Clear screen
         game.screen.fill(BLACK)
@@ -935,9 +974,6 @@ def main() -> None:
 
         # Update display
         pygame.display.flip()
-
-        # Cap frame rate
-        game.clock.tick(FPS)
 
     pygame.quit()
     sys.exit()

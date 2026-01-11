@@ -5,7 +5,7 @@ from game import (
     GRAVITY, JUMP_STRENGTH, GROUND_Y,
     PLAYER_HEIGHT, PLAYER_WIDTH,
     MAX_JUMP_HEIGHT,
-    BASE_SCROLL_SPEED, MAX_SCROLL_SPEED, SPEED_INCREMENT,
+    BASE_SCROLL_SPEED, MAX_SCROLL_SPEED, POINTS_PER_SPEED_INCREASE,
     get_scroll_speed
 )
 
@@ -156,18 +156,18 @@ class TestScrollSpeed:
     def test_speed_increases_with_score(self):
         """Speed should increase as score increases."""
         speed_0 = get_scroll_speed(0)
-        speed_5 = get_scroll_speed(5)
-        speed_10 = get_scroll_speed(10)
+        speed_20 = get_scroll_speed(POINTS_PER_SPEED_INCREASE)
+        speed_40 = get_scroll_speed(POINTS_PER_SPEED_INCREASE * 2)
 
-        assert speed_5 > speed_0
-        assert speed_10 > speed_5
+        assert speed_20 > speed_0
+        assert speed_40 > speed_20
 
     def test_speed_increment_is_correct(self):
-        """Speed should increase by SPEED_INCREMENT per point."""
+        """Speed should increase by 1 every POINTS_PER_SPEED_INCREASE points."""
         speed_0 = get_scroll_speed(0)
-        speed_1 = get_scroll_speed(1)
+        speed_at_threshold = get_scroll_speed(POINTS_PER_SPEED_INCREASE)
 
-        assert speed_1 == speed_0 + SPEED_INCREMENT
+        assert speed_at_threshold == speed_0 + 1
 
     def test_speed_caps_at_maximum(self):
         """Speed should not exceed MAX_SCROLL_SPEED."""
@@ -177,8 +177,9 @@ class TestScrollSpeed:
 
     def test_speed_reaches_max_at_correct_score(self):
         """Speed should reach max at the expected score."""
-        # Calculate score needed to reach max
-        score_for_max = int((MAX_SCROLL_SPEED - BASE_SCROLL_SPEED) / SPEED_INCREMENT)
+        # Calculate score needed to reach max (8 speed levels * 20 points each = 160)
+        speed_levels_needed = MAX_SCROLL_SPEED - BASE_SCROLL_SPEED
+        score_for_max = speed_levels_needed * POINTS_PER_SPEED_INCREASE
 
         speed_at_max = get_scroll_speed(score_for_max)
         speed_over_max = get_scroll_speed(score_for_max + 10)
