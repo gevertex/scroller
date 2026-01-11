@@ -54,6 +54,14 @@ def init_pygame():
         font = None
     clock = pygame.time.Clock()
 
+    # Load and play background music
+    pygame.mixer.init()
+    try:
+        pygame.mixer.music.load("background_music.mp3")
+        pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+    except pygame.error:
+        pass  # Music file not found
+
 
 def generate_obstacle(last_obstacle=None, from_ground=False):
     """Generate a new floating obstacle that is reachable from the last one."""
@@ -284,6 +292,8 @@ def main():
                 if event.key == pygame.K_RETURN and game_over:
                     # Reset the game
                     player_y, player_velocity_y, is_jumping, jump_held, has_jumped, game_over, score, obstacles = reset_game()
+                    # Restart background music
+                    pygame.mixer.music.play(-1)
 
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -312,6 +322,7 @@ def main():
                 # Game over if player has jumped before and touches ground
                 if has_jumped:
                     game_over = True
+                    pygame.mixer.music.stop()
 
             # Check obstacle collisions (landing on top)
             if not on_surface and player_velocity_y >= 0:  # Only check when falling

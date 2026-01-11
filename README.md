@@ -11,7 +11,7 @@ A minimalist side-scrolling platform game built with Python and Pygame. Features
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.12 (recommended for full audio support)
 - Pygame 2.x
 
 ## Setup
@@ -24,7 +24,7 @@ cd fun_game
 
 2. Create and activate a virtual environment:
 ```bash
-python -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate  # On macOS/Linux
 # or
 venv\Scripts\activate     # On Windows

@@ -4,8 +4,8 @@
 A simple side-scrolling jumping game built with Python and Pygame. The game uses vector graphics (shapes) instead of sprites, with a black background and white objects.
 
 ## Technical Stack
-- Python
-- Pygame
+- Python 3.12 (required for full audio/mixer support)
+- Pygame 2.x
 - Vector graphics only (no sprites/art assets)
 
 ## Visual Style
@@ -66,6 +66,12 @@ A simple side-scrolling jumping game built with Python and Pygame. The game uses
 - **Spacebar**: Jump (hold for higher jump)
 - **Enter**: Reset game (when game over)
 - **ESC**: Quit game
+
+## Audio
+- Background music plays during gameplay (background_music.mp3)
+- Music loops continuously while game is active
+- Music stops when game over is triggered
+- Music restarts when game is reset
 
 ## Future Considerations
 - Collectible items
