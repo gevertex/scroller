@@ -6,6 +6,7 @@ import pytest
 from game import (
     save_high_score,
     load_high_score,
+    reset_game,
     _compute_score_signature,
     HIGH_SCORE_PATH,
     HIGH_SCORE_SECRET,
@@ -122,3 +123,39 @@ class TestSignatureComputation:
         # SHA256 produces 64 hex characters
         assert len(sig) == 64
         assert all(c in "0123456789abcdef" for c in sig)
+
+
+class TestHighScoreIntegration:
+    """Integration tests for high score across game sessions."""
+
+    def test_reset_game_loads_high_score_from_disk(self, clean_high_score_file):
+        """reset_game should load the persisted high score."""
+        save_high_score(150)
+        state = reset_game()
+        assert state.high_score == 150
+
+    def test_save_restart_load_flow(self, clean_high_score_file):
+        """Full flow: save score, simulate restart, verify loaded."""
+        # First "session" - save a high score
+        save_high_score(88)
+
+        # Simulate game restart by calling reset_game
+        state = reset_game()
+
+        # Verify the high score persisted across "sessions"
+        assert state.high_score == 88
+        assert state.score == 0  # Current score should be fresh
+
+    def test_reset_game_with_no_high_score_file(self, clean_high_score_file):
+        """reset_game should handle missing high score file gracefully."""
+        state = reset_game()
+        assert state.high_score == 0
+
+    def test_reset_game_with_tampered_file(self, clean_high_score_file):
+        """reset_game should return 0 for tampered high score file."""
+        # Create a tampered file
+        with open(HIGH_SCORE_PATH, "w") as f:
+            json.dump({"high_score": 9999, "signature": "fake"}, f)
+
+        state = reset_game()
+        assert state.high_score == 0

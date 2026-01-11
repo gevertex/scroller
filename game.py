@@ -198,7 +198,8 @@ def save_high_score(score: int) -> bool:
         score: The high score to save.
 
     Returns:
-        True if saved successfully, False otherwise.
+        True if saved successfully.
+        False if file could not be written (IOError/OSError).
     """
     data = {
         "high_score": score,
