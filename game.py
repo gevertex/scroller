@@ -44,6 +44,8 @@ MAX_PLATFORM_Y = GROUND_Y - 20  # Lowest platforms (near ground)
 INITIAL_OBSTACLE_COUNT = 4  # Number of obstacles generated at game start
 INITIAL_OBSTACLE_OFFSET_MIN = 100  # Minimum x offset for first obstacle
 INITIAL_OBSTACLE_OFFSET_MAX = 300  # Maximum x offset for first obstacle
+STARTING_PLATFORM_WIDTH = 600  # Very wide platform player starts on
+STARTING_PLATFORM_X = -100  # Starting platform left edge position
 
 # Drawing settings
 LINE_THICKNESS = 2
@@ -718,11 +720,20 @@ def reset_game() -> GameState:
     """Reset game state for a new game.
 
     Returns:
-        Fresh game state with player on ground and initial obstacles.
+        Fresh game state with player on starting platform and initial obstacles.
     """
-    # Generate initial obstacles
-    obstacles: List[Obstacle] = []
-    first_obs = generate_obstacle(from_ground=True)
+    # Create starting platform - a wide platform sitting on ground level
+    starting_platform = Obstacle(
+        x=STARTING_PLATFORM_X,
+        y=GROUND_Y - OBSTACLE_THICKNESS,  # Platform sits on top of ground
+        width=STARTING_PLATFORM_WIDTH,
+        height=OBSTACLE_THICKNESS,
+        scored=True  # Don't score the starting platform
+    )
+
+    # Generate initial obstacles reachable from starting platform
+    obstacles: List[Obstacle] = [starting_platform]
+    first_obs = generate_obstacle(starting_platform)
     obstacles.append(first_obs)
     last_obs = first_obs
     for _ in range(INITIAL_OBSTACLE_COUNT):
@@ -731,11 +742,11 @@ def reset_game() -> GameState:
         last_obs = new_obs
 
     return GameState(
-        player_y=GROUND_Y - PLAYER_HEIGHT,  # Start on ground
+        player_y=GROUND_Y - OBSTACLE_THICKNESS - PLAYER_HEIGHT,  # Start on starting platform
         player_velocity_y=0,
         is_jumping=False,
         jump_held=False,
-        has_jumped=False,
+        has_jumped=True,  # Falling to ground is instant death
         game_over=False,
         score=0,
         high_score=load_high_score(),
