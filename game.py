@@ -74,6 +74,9 @@ CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
 FPS_DISPLAY_PADDING = 10
 FPS_DISPLAY_SIZE = 14
 
+# Text outline settings
+TEXT_OUTLINE_OFFSET = 2  # Pixels to offset for outline effect
+
 # Pre-computed segment definitions for 7-segment digit display
 # Segment positions are relative multipliers of (width, height)
 # Format: (start_x_mult, start_y_mult, end_x_mult, end_y_mult)
@@ -258,29 +261,54 @@ def draw_ground() -> None:
     pygame.draw.line(_game.screen, WHITE, (0, GROUND_Y), (SCREEN_WIDTH, GROUND_Y), LINE_THICKNESS)
 
 
-def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_digit_raw(x: float, y: float, digit: int, color: tuple, size: int = SCORE_DIGIT_SIZE) -> None:
     """Draw a single digit using vector lines (7-segment style).
 
     Uses pre-computed DIGIT_SEGMENTS and DIGIT_SEGMENT_MAP constants.
+
+    Args:
+        x: X position.
+        y: Y position.
+        digit: Digit 0-9 to draw.
+        color: RGB tuple for the color.
+        size: Size of the digit.
     """
     w = size // 2  # Width
     h = size       # Height
 
     for seg_name in DIGIT_SEGMENT_MAP.get(digit, ()):
         seg = DIGIT_SEGMENTS[seg_name]
-        pygame.draw.line(_game.screen, WHITE,
+        pygame.draw.line(_game.screen, color,
                         (x + seg[0] * w, y + seg[1] * h),
                         (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
+def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
+    """Draw a digit with black outline for readability."""
+    # Draw black outline at offsets
+    for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
+                   (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
+        draw_digit_raw(x + dx, y + dy, digit, BLACK, size)
+    # Draw white digit on top
+    draw_digit_raw(x, y, digit, WHITE, size)
+
+
 def draw_score(score: int) -> None:
-    """Draw the score in the top right corner."""
+    """Draw the score in the top right corner with black outline."""
     if _game.font:
-        text_surface = _game.font.render(f"Score: {score}", True, WHITE)
-        text_rect = text_surface.get_rect(topright=(SCREEN_WIDTH - SCORE_PADDING, SCORE_PADDING))
+        text = f"Score: {score}"
+        text_rect = _game.font.render(text, True, WHITE).get_rect(
+            topright=(SCREEN_WIDTH - SCORE_PADDING, SCORE_PADDING))
+        # Draw black outline at offsets
+        outline_surface = _game.font.render(text, True, BLACK)
+        for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
+                       (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
+            _game.screen.blit(outline_surface, text_rect.move(dx, dy))
+        # Draw white text on top
+        text_surface = _game.font.render(text, True, WHITE)
         _game.screen.blit(text_surface, text_rect)
     else:
-        # Draw score using vector digit rendering
+        # Draw score using vector digit rendering (already has outline)
         score_str = str(score)
         total_width = len(score_str) * SCORE_DIGIT_WIDTH
         start_x = SCREEN_WIDTH - SCORE_PADDING - total_width
@@ -311,19 +339,36 @@ def draw_text(text: str, y_position: float, size: int = 20) -> None:
         # Spaces and other characters are skipped (just add spacing)
 
 
-def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_letter_raw(x: float, y: float, letter: str, color: tuple, size: int = SCORE_DIGIT_SIZE) -> None:
     """Draw a letter using vector lines.
 
     Uses pre-computed LETTER_SEGMENTS constant.
+
+    Args:
+        x: X position.
+        y: Y position.
+        letter: Uppercase letter to draw.
+        color: RGB tuple for the color.
+        size: Size of the letter.
     """
     w = size // 2
     h = size
 
     if letter in LETTER_SEGMENTS:
         for seg in LETTER_SEGMENTS[letter]:
-            pygame.draw.line(_game.screen, WHITE,
+            pygame.draw.line(_game.screen, color,
                            (x + seg[0] * w, y + seg[1] * h),
                            (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
+
+
+def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
+    """Draw a letter with black outline for readability."""
+    # Draw black outline at offsets
+    for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
+                   (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
+        draw_letter_raw(x + dx, y + dy, letter, BLACK, size)
+    # Draw white letter on top
+    draw_letter_raw(x, y, letter, WHITE, size)
 
 
 def draw_game_over() -> None:
@@ -333,7 +378,7 @@ def draw_game_over() -> None:
 
 
 def draw_fps(fps: float) -> None:
-    """Draw FPS counter in the top-left corner.
+    """Draw FPS counter in the top-left corner with black outline.
 
     Args:
         fps: Current frames per second from clock.get_fps().
@@ -341,10 +386,18 @@ def draw_fps(fps: float) -> None:
     fps_int = int(fps)
 
     if _game.font:
-        text_surface = _game.font.render(f"FPS: {fps_int}", True, WHITE)
-        _game.screen.blit(text_surface, (FPS_DISPLAY_PADDING, FPS_DISPLAY_PADDING))
+        text = f"FPS: {fps_int}"
+        pos = (FPS_DISPLAY_PADDING, FPS_DISPLAY_PADDING)
+        # Draw black outline at offsets
+        outline_surface = _game.font.render(text, True, BLACK)
+        for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
+                       (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
+            _game.screen.blit(outline_surface, (pos[0] + dx, pos[1] + dy))
+        # Draw white text on top
+        text_surface = _game.font.render(text, True, WHITE)
+        _game.screen.blit(text_surface, pos)
     else:
-        # Draw "FPS" text using vector letters
+        # Draw "FPS" text using vector letters (already has outline)
         draw_letter(FPS_DISPLAY_PADDING, FPS_DISPLAY_PADDING, 'F', size=FPS_DISPLAY_SIZE)
         draw_letter(FPS_DISPLAY_PADDING + 12, FPS_DISPLAY_PADDING, 'P', size=FPS_DISPLAY_SIZE)
         draw_letter(FPS_DISPLAY_PADDING + 24, FPS_DISPLAY_PADDING, 'S', size=FPS_DISPLAY_SIZE)
