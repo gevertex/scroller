@@ -6,7 +6,9 @@ sys.path.insert(0, '/Users/georgesapp/Documents/gitrepos/fun_game')
 from game import (
     GRAVITY, JUMP_STRENGTH, GROUND_Y,
     PLAYER_HEIGHT, PLAYER_WIDTH,
-    MAX_JUMP_HEIGHT
+    MAX_JUMP_HEIGHT,
+    BASE_SCROLL_SPEED, MAX_SCROLL_SPEED, SPEED_INCREMENT,
+    get_scroll_speed
 )
 
 
@@ -143,3 +145,51 @@ class TestJumpPhysics:
         for i in range(peak_index + 1, len(positions)):
             if positions[i-1] < 0:  # Still in the air
                 assert positions[i] >= positions[i-1]
+
+
+class TestScrollSpeed:
+    """Test cases for progressive scroll speed."""
+
+    def test_base_speed_at_zero_score(self):
+        """Speed should be base speed when score is 0."""
+        speed = get_scroll_speed(0)
+        assert speed == BASE_SCROLL_SPEED
+
+    def test_speed_increases_with_score(self):
+        """Speed should increase as score increases."""
+        speed_0 = get_scroll_speed(0)
+        speed_5 = get_scroll_speed(5)
+        speed_10 = get_scroll_speed(10)
+
+        assert speed_5 > speed_0
+        assert speed_10 > speed_5
+
+    def test_speed_increment_is_correct(self):
+        """Speed should increase by SPEED_INCREMENT per point."""
+        speed_0 = get_scroll_speed(0)
+        speed_1 = get_scroll_speed(1)
+
+        assert speed_1 == speed_0 + SPEED_INCREMENT
+
+    def test_speed_caps_at_maximum(self):
+        """Speed should not exceed MAX_SCROLL_SPEED."""
+        # Use a very high score
+        speed = get_scroll_speed(1000)
+        assert speed == MAX_SCROLL_SPEED
+
+    def test_speed_reaches_max_at_correct_score(self):
+        """Speed should reach max at the expected score."""
+        # Calculate score needed to reach max
+        score_for_max = int((MAX_SCROLL_SPEED - BASE_SCROLL_SPEED) / SPEED_INCREMENT)
+
+        speed_at_max = get_scroll_speed(score_for_max)
+        speed_over_max = get_scroll_speed(score_for_max + 10)
+
+        assert speed_at_max == MAX_SCROLL_SPEED
+        assert speed_over_max == MAX_SCROLL_SPEED
+
+    def test_speed_is_always_positive(self):
+        """Speed should always be positive."""
+        for score in range(0, 50):
+            speed = get_scroll_speed(score)
+            assert speed > 0

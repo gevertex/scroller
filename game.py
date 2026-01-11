@@ -19,7 +19,9 @@ JUMP_STRENGTH = -15
 GROUND_Y = SCREEN_HEIGHT - 50  # Ground level
 
 # Obstacle settings
-SCROLL_SPEED = 4
+BASE_SCROLL_SPEED = 4
+MAX_SCROLL_SPEED = 12
+SPEED_INCREMENT = 0.05  # Speed increase per point scored
 MIN_OBSTACLE_WIDTH = 60
 MAX_OBSTACLE_WIDTH = 150
 OBSTACLE_THICKNESS = 20  # Fixed thickness for all obstacles
@@ -227,6 +229,12 @@ def check_obstacle_collision(player_x, player_y, obstacle):
     return False
 
 
+def get_scroll_speed(score):
+    """Calculate scroll speed based on current score."""
+    speed = BASE_SCROLL_SPEED + (score * SPEED_INCREMENT)
+    return min(speed, MAX_SCROLL_SPEED)
+
+
 def reset_game():
     """Reset game state for a new game."""
     player_y = SCREEN_HEIGHT - PLAYER_HEIGHT - 50  # Start on ground
@@ -319,9 +327,10 @@ def main():
                             score += 1
                         break
 
-            # Move obstacles
+            # Move obstacles (speed increases with score)
+            current_speed = get_scroll_speed(score)
             for obstacle in obstacles:
-                obstacle['x'] -= SCROLL_SPEED
+                obstacle['x'] -= current_speed
 
             # Remove off-screen obstacles and generate new ones
             if obstacles and obstacles[0]['x'] + obstacles[0]['width'] < 0:

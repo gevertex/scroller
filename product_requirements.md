@@ -39,7 +39,11 @@ A simple side-scrolling jumping game built with Python and Pygame. The game uses
   - Horizontal gap between platforms: 60-130 pixels
   - Each platform must be reachable by jumping from the previous one
   - First platform must be reachable from the ground
-- Platforms scroll from right to left at constant speed
+- Platforms scroll from right to left
+- Scroll speed increases with score (progressive difficulty)
+  - Base speed: 4 pixels/frame
+  - Increases by 0.05 pixels/frame per point scored
+  - Maximum speed: 12 pixels/frame (reached at 160 points)
 - Player can land on top of platforms
 
 ## Scoring
@@ -64,7 +68,6 @@ A simple side-scrolling jumping game built with Python and Pygame. The game uses
 - **ESC**: Quit game
 
 ## Future Considerations
-- Increasing difficulty/speed over time
 - Collectible items
 - High score tracking
 - Sound effects
