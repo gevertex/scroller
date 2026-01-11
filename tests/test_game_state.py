@@ -2,8 +2,9 @@
 import pytest
 
 from game import (
-    reset_game, GameState,
-    GROUND_Y, PLAYER_HEIGHT, INITIAL_OBSTACLE_COUNT
+    reset_game, GameState, TrailPoint,
+    GROUND_Y, PLAYER_HEIGHT, PLAYER_WIDTH, INITIAL_OBSTACLE_COUNT,
+    TRAIL_MAX_POINTS, TRAIL_SPAWN_INTERVAL, TRAIL_POINT_SIZE, TRAIL_FADE_RATE
 )
 
 
@@ -204,3 +205,49 @@ class TestJumpBuffering:
         # Jump should NOT have executed, but buffer cleared
         assert state.is_jumping is True  # Still in air from before
         assert state.jump_buffered is False
+
+
+class TestJumpTrail:
+    """Test cases for jump trail visual effect."""
+
+    def test_trail_empty_by_default(self):
+        """Trail should be empty after reset."""
+        state = reset_game()
+        assert len(state.trail) == 0
+
+    def test_trail_frame_counter_zero_by_default(self):
+        """Trail frame counter should be zero after reset."""
+        state = reset_game()
+        assert state.trail_frame_counter == 0
+
+    def test_trail_point_has_required_fields(self):
+        """TrailPoint should have x, y, and opacity fields."""
+        point = TrailPoint(x=100, y=200, opacity=0.5)
+        assert point.x == 100
+        assert point.y == 200
+        assert point.opacity == 0.5
+
+    def test_trail_point_opacity_range(self):
+        """TrailPoint opacity should be between 0 and 1."""
+        point = TrailPoint(x=0, y=0, opacity=1.0)
+        assert 0 <= point.opacity <= 1
+
+        point.opacity = 0.5
+        assert 0 <= point.opacity <= 1
+
+    def test_trail_max_points_constant_exists(self):
+        """TRAIL_MAX_POINTS constant should exist and be positive."""
+        assert TRAIL_MAX_POINTS > 0
+
+    def test_trail_spawn_interval_constant_exists(self):
+        """TRAIL_SPAWN_INTERVAL constant should exist and be positive."""
+        assert TRAIL_SPAWN_INTERVAL > 0
+
+    def test_trail_point_size_smaller_than_player(self):
+        """TRAIL_POINT_SIZE should be smaller than player dimensions."""
+        assert TRAIL_POINT_SIZE < PLAYER_WIDTH
+        assert TRAIL_POINT_SIZE < PLAYER_HEIGHT
+
+    def test_trail_fade_rate_valid(self):
+        """TRAIL_FADE_RATE should be between 0 and 1."""
+        assert 0 < TRAIL_FADE_RATE < 1

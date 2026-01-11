@@ -71,6 +71,12 @@ FPS = 60
 JUMP_CUT_MULTIPLIER = 0.5  # Velocity multiplier when releasing jump early
 DEBRIS_UPWARD_BIAS = 5  # Upward velocity added to debris for better visual
 
+# Trail settings (visual effect during jump)
+TRAIL_MAX_POINTS = 12  # Maximum number of trail points
+TRAIL_SPAWN_INTERVAL = 2  # Spawn a trail point every N frames
+TRAIL_POINT_SIZE = 8  # Size of trail squares (much smaller than player)
+TRAIL_FADE_RATE = 0.08  # Base fade rate per frame
+
 # Asset paths
 ASSETS_DIR = Path(__file__).parent / "assets"
 BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
@@ -160,6 +166,14 @@ class Debris:
 
 
 @dataclass
+class TrailPoint:
+    """Represents a point in the player's jump trail."""
+    x: float
+    y: float
+    opacity: float  # 0.0 to 1.0
+
+
+@dataclass
 class GameState:
     """Holds all mutable game state."""
     player_y: float
@@ -172,8 +186,10 @@ class GameState:
     high_score: int
     high_score_beaten: bool = False
     jump_buffered: bool = False  # Buffer jump input for same-frame landing
+    trail_frame_counter: int = 0  # Counter for trail spawn timing
     obstacles: List[Obstacle] = field(default_factory=list)
     debris: List[Debris] = field(default_factory=list)
+    trail: List[TrailPoint] = field(default_factory=list)
 
 
 @dataclass
@@ -344,6 +360,24 @@ def generate_obstacle(
 def draw_player(x: float, y: float) -> None:
     """Draw the player as a white outlined rectangle."""
     pygame.draw.rect(_game.screen, WHITE, (x, y, PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
+
+
+def draw_trail(trail: List[TrailPoint]) -> None:
+    """Draw the player's jump trail with fading opacity.
+
+    Trail points are drawn as small filled squares that fade from white to black
+    based on their opacity value. Points scroll with the world.
+    """
+    for point in trail:
+        if point.opacity <= 0:
+            continue
+        # Interpolate color between black and white based on opacity
+        color_value = int(255 * point.opacity)
+        color = (color_value, color_value, color_value)
+        pygame.draw.rect(
+            _game.screen, color,
+            (point.x, point.y, TRAIL_POINT_SIZE, TRAIL_POINT_SIZE)
+        )
 
 
 def draw_ground() -> None:
@@ -761,6 +795,38 @@ def main() -> None:
             state.player_velocity_y += GRAVITY
             state.player_y += state.player_velocity_y
 
+            # Update jump trail
+            if state.player_velocity_y < 0:  # Ascending - spawn new trail points
+                state.trail_frame_counter += 1
+                if state.trail_frame_counter >= TRAIL_SPAWN_INTERVAL:
+                    state.trail_frame_counter = 0
+                    # Add new trail point at lower left corner of player
+                    state.trail.append(TrailPoint(
+                        x=PLAYER_X,
+                        y=state.player_y + PLAYER_HEIGHT - TRAIL_POINT_SIZE,
+                        opacity=1.0
+                    ))
+                    # Limit trail length
+                    if len(state.trail) > TRAIL_MAX_POINTS:
+                        state.trail.pop(0)
+
+                # Fade trail based on how close to apex (velocity approaching 0)
+                # Velocity ranges from JUMP_STRENGTH (-15) to 0
+                # Fade rate increases as velocity approaches 0
+                fade_rate = 1.0 - (state.player_velocity_y / JUMP_STRENGTH)
+                fade_amount = TRAIL_FADE_RATE + (TRAIL_FADE_RATE * fade_rate)
+                for point in state.trail:
+                    point.opacity -= fade_amount
+            else:
+                # Not ascending - stop spawning but let existing trail fade
+                state.trail_frame_counter = 0
+                # Continue fading existing trail points
+                for point in state.trail:
+                    point.opacity -= TRAIL_FADE_RATE * 2  # Fade faster after apex
+
+            # Remove fully faded or off-screen points
+            state.trail = [p for p in state.trail if p.opacity > 0 and p.x > -TRAIL_POINT_SIZE]
+
             # Check ground collision
             on_surface = False
             if state.player_y >= GROUND_Y - PLAYER_HEIGHT:
@@ -812,6 +878,10 @@ def main() -> None:
             for obstacle in state.obstacles:
                 obstacle.x -= current_speed
 
+            # Move trail points with the world
+            for point in state.trail:
+                point.x -= current_speed
+
             # Remove off-screen obstacles and generate new ones
             if state.obstacles and state.obstacles[0].x + state.obstacles[0].width < 0:
                 state.obstacles.pop(0)
@@ -839,6 +909,8 @@ def main() -> None:
         if state.game_over:
             draw_debris(state.debris)
         else:
+            # Draw trail behind player
+            draw_trail(state.trail)
             draw_player(PLAYER_X, state.player_y)
 
         draw_score(state.score, state.high_score)
