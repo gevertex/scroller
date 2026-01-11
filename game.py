@@ -22,14 +22,13 @@ GROUND_Y = SCREEN_HEIGHT - 50  # Ground level
 SCROLL_SPEED = 4
 MIN_OBSTACLE_WIDTH = 60
 MAX_OBSTACLE_WIDTH = 150
-MIN_OBSTACLE_HEIGHT = 15
-MAX_OBSTACLE_HEIGHT = 40
+OBSTACLE_THICKNESS = 20  # Fixed thickness for all obstacles
 MIN_GAP = 60   # Minimum horizontal gap between obstacles
 MAX_GAP = 130  # Maximum horizontal gap between obstacles
 MAX_JUMP_HEIGHT = 120  # Maximum height player can jump
-MAX_HEIGHT_DIFF = 80  # Max height difference to ensure jumpability
-MIN_PLATFORM_Y = 150  # Highest platforms can go (from top of screen)
-MAX_PLATFORM_Y = GROUND_Y - 60  # Lowest platforms can be
+MAX_HEIGHT_DIFF = 100  # Max height difference to ensure jumpability
+MIN_PLATFORM_Y = 50   # Highest platforms can go (near top of screen)
+MAX_PLATFORM_Y = GROUND_Y - 20  # Lowest platforms (near ground)
 
 # Frame rate
 FPS = 60
@@ -57,7 +56,6 @@ def init_pygame():
 def generate_obstacle(last_obstacle=None, from_ground=False):
     """Generate a new floating obstacle that is reachable from the last one."""
     width = random.randint(MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH)
-    height = random.randint(MIN_OBSTACLE_HEIGHT, MAX_OBSTACLE_HEIGHT)
 
     # Position obstacle off-screen to the right
     if last_obstacle and not from_ground:
@@ -83,7 +81,7 @@ def generate_obstacle(last_obstacle=None, from_ground=False):
         'x': x,
         'y': y,
         'width': width,
-        'height': height,  # Fixed height, floating platform
+        'height': OBSTACLE_THICKNESS,  # Fixed thickness for all platforms
         'scored': False  # Track if player has landed on this
     }
 

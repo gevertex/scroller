@@ -6,7 +6,7 @@ sys.path.insert(0, '/Users/georgesapp/Documents/gitrepos/fun_game')
 from game import (
     generate_obstacle,
     MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH,
-    MIN_OBSTACLE_HEIGHT, MAX_OBSTACLE_HEIGHT,
+    OBSTACLE_THICKNESS,
     MIN_GAP, MAX_GAP,
     MAX_JUMP_HEIGHT, MAX_HEIGHT_DIFF,
     MIN_PLATFORM_Y, MAX_PLATFORM_Y,
@@ -33,11 +33,11 @@ class TestObstacleGeneration:
             obstacle = generate_obstacle()
             assert MIN_OBSTACLE_WIDTH <= obstacle['width'] <= MAX_OBSTACLE_WIDTH
 
-    def test_obstacle_height_in_range(self):
-        """Obstacle height should be within defined range."""
+    def test_obstacle_height_is_fixed(self):
+        """Obstacle height should be fixed thickness."""
         for _ in range(50):
             obstacle = generate_obstacle()
-            assert MIN_OBSTACLE_HEIGHT <= obstacle['height'] <= MAX_OBSTACLE_HEIGHT
+            assert obstacle['height'] == OBSTACLE_THICKNESS
 
     def test_obstacle_starts_offscreen(self):
         """First obstacle should start off-screen to the right."""
@@ -100,7 +100,7 @@ class TestObstacleGeneration:
         # Verify each obstacle has valid properties
         for obs in obstacles:
             assert MIN_OBSTACLE_WIDTH <= obs['width'] <= MAX_OBSTACLE_WIDTH
-            assert MIN_OBSTACLE_HEIGHT <= obs['height'] <= MAX_OBSTACLE_HEIGHT
+            assert obs['height'] == OBSTACLE_THICKNESS
             assert obs['scored'] is False
 
     def test_obstacle_y_within_bounds(self):
