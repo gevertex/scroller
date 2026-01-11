@@ -95,7 +95,7 @@ def init_pygame():
 
     # Load crash sound effect
     try:
-        crash_sound = pygame.mixer.Sound("crash.m4a")
+        crash_sound = pygame.mixer.Sound("crash.wav")
     except pygame.error:
         crash_sound = None  # Sound file not found
 
