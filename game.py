@@ -157,6 +157,58 @@ def draw_obstacle(obstacle):
                                       obstacle['width'], obstacle['height']))
 
 
+def draw_text(text, y_position, size=20):
+    """Draw text centered on screen using vector digits."""
+    # Calculate total width
+    char_width = size // 2 + 6
+    total_width = len(text) * char_width
+    start_x = (SCREEN_WIDTH - total_width) // 2
+
+    for i, char in enumerate(text):
+        x = start_x + i * char_width
+        if char.isdigit():
+            draw_digit(x, y_position, int(char), size=size)
+        elif char.isalpha():
+            draw_letter(x, y_position, char.upper(), size=size)
+        # Spaces and other characters are skipped (just add spacing)
+
+
+def draw_letter(x, y, letter, size=20):
+    """Draw a letter using vector lines."""
+    w = size // 2
+    h = size
+    t = 2
+
+    # Simple segment-based letters
+    letter_segments = {
+        'A': [(0, h, 0, h//3), (0, h//3, w//2, 0), (w//2, 0, w, h//3), (w, h//3, w, h), (0, h//2, w, h//2)],
+        'E': [(0, 0, 0, h), (0, 0, w, 0), (0, h//2, w*2//3, h//2), (0, h, w, h)],
+        'G': [(w, h//3, w//2, 0), (w//2, 0, 0, h//3), (0, h//3, 0, h*2//3), (0, h*2//3, w//2, h), (w//2, h, w, h*2//3), (w, h*2//3, w, h//2), (w, h//2, w//2, h//2)],
+        'M': [(0, h, 0, 0), (0, 0, w//2, h//2), (w//2, h//2, w, 0), (w, 0, w, h)],
+        'O': [(0, h//4, 0, h*3//4), (0, h//4, w//2, 0), (w//2, 0, w, h//4), (w, h//4, w, h*3//4), (w, h*3//4, w//2, h), (w//2, h, 0, h*3//4)],
+        'P': [(0, h, 0, 0), (0, 0, w, 0), (w, 0, w, h//2), (w, h//2, 0, h//2)],
+        'R': [(0, h, 0, 0), (0, 0, w, 0), (w, 0, w, h//2), (w, h//2, 0, h//2), (0, h//2, w, h)],
+        'S': [(w, h//4, w//2, 0), (w//2, 0, 0, h//4), (0, h//4, 0, h//2), (0, h//2, w, h//2), (w, h//2, w, h*3//4), (w, h*3//4, w//2, h), (w//2, h, 0, h*3//4)],
+        'T': [(0, 0, w, 0), (w//2, 0, w//2, h)],
+        'V': [(0, 0, w//2, h), (w//2, h, w, 0)],
+        'N': [(0, h, 0, 0), (0, 0, w, h), (w, h, w, 0)],
+        'I': [(w//4, 0, w*3//4, 0), (w//2, 0, w//2, h), (w//4, h, w*3//4, h)],
+    }
+
+    if letter in letter_segments:
+        for seg in letter_segments[letter]:
+            pygame.draw.line(screen, WHITE, (x + seg[0], y + seg[1]), (x + seg[2], y + seg[3]), t)
+
+
+def draw_game_over():
+    """Draw game over overlay."""
+    # Semi-transparent overlay effect (darken by drawing black rect with some objects)
+    # Draw "GAME OVER" large
+    draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=32)
+    # Draw "PRESS ENTER TO RESET" smaller below
+    draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=16)
+
+
 def check_obstacle_collision(player_x, player_y, obstacle):
     """Check if player is landing on top of a floating obstacle."""
     player_bottom = player_y + PLAYER_HEIGHT
@@ -175,20 +227,18 @@ def check_obstacle_collision(player_x, player_y, obstacle):
     return False
 
 
-def main():
-    # Initialize pygame
-    init_pygame()
-
-    # Game state
+def reset_game():
+    """Reset game state for a new game."""
     player_y = SCREEN_HEIGHT - PLAYER_HEIGHT - 50  # Start on ground
     player_velocity_y = 0
     is_jumping = False
     jump_held = False
+    has_jumped = False  # Track if player has jumped at least once
+    game_over = False
     score = 0
 
     # Generate initial obstacles
     obstacles = []
-    # First obstacle must be reachable from the ground
     first_obs = generate_obstacle(from_ground=True)
     obstacles.append(first_obs)
     last_obs = first_obs
@@ -196,6 +246,16 @@ def main():
         new_obs = generate_obstacle(last_obs)
         obstacles.append(new_obs)
         last_obs = new_obs
+
+    return player_y, player_velocity_y, is_jumping, jump_held, has_jumped, game_over, score, obstacles
+
+
+def main():
+    # Initialize pygame
+    init_pygame()
+
+    # Initialize game state
+    player_y, player_velocity_y, is_jumping, jump_held, has_jumped, game_over, score, obstacles = reset_game()
 
     running = True
     while running:
@@ -205,12 +265,17 @@ def main():
                 running = False
 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_SPACE and not game_over:
                     # Only jump if on the ground or on an obstacle
                     if not is_jumping:
                         player_velocity_y = JUMP_STRENGTH
                         is_jumping = True
                         jump_held = True
+                        has_jumped = True  # Player has now jumped
+
+                if event.key == pygame.K_RETURN and game_over:
+                    # Reset the game
+                    player_y, player_velocity_y, is_jumping, jump_held, has_jumped, game_over, score, obstacles = reset_game()
 
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -222,46 +287,52 @@ def main():
                     if player_velocity_y < 0:
                         player_velocity_y *= 0.5  # Reduce upward velocity
 
-        # Apply gravity
-        player_velocity_y += GRAVITY
-        player_y += player_velocity_y
+        # Only update game if not game over
+        if not game_over:
+            # Apply gravity
+            player_velocity_y += GRAVITY
+            player_y += player_velocity_y
 
-        # Check ground collision
-        on_surface = False
-        if player_y >= GROUND_Y - PLAYER_HEIGHT:
-            player_y = GROUND_Y - PLAYER_HEIGHT
-            player_velocity_y = 0
-            is_jumping = False
-            on_surface = True
+            # Check ground collision
+            on_surface = False
+            if player_y >= GROUND_Y - PLAYER_HEIGHT:
+                player_y = GROUND_Y - PLAYER_HEIGHT
+                player_velocity_y = 0
+                is_jumping = False
+                on_surface = True
 
-        # Check obstacle collisions (landing on top)
-        if not on_surface and player_velocity_y >= 0:  # Only check when falling
+                # Game over if player has jumped before and touches ground
+                if has_jumped:
+                    game_over = True
+
+            # Check obstacle collisions (landing on top)
+            if not on_surface and player_velocity_y >= 0:  # Only check when falling
+                for obstacle in obstacles:
+                    if check_obstacle_collision(PLAYER_X, player_y, obstacle):
+                        player_y = obstacle['y'] - PLAYER_HEIGHT
+                        player_velocity_y = 0
+                        is_jumping = False
+                        on_surface = True
+                        # Award point if first time landing on this obstacle
+                        if not obstacle['scored']:
+                            obstacle['scored'] = True
+                            score += 1
+                        break
+
+            # Move obstacles
             for obstacle in obstacles:
-                if check_obstacle_collision(PLAYER_X, player_y, obstacle):
-                    player_y = obstacle['y'] - PLAYER_HEIGHT
-                    player_velocity_y = 0
-                    is_jumping = False
-                    on_surface = True
-                    # Award point if first time landing on this obstacle
-                    if not obstacle['scored']:
-                        obstacle['scored'] = True
-                        score += 1
-                    break
+                obstacle['x'] -= SCROLL_SPEED
 
-        # Move obstacles
-        for obstacle in obstacles:
-            obstacle['x'] -= SCROLL_SPEED
+            # Remove off-screen obstacles and generate new ones
+            if obstacles and obstacles[0]['x'] + obstacles[0]['width'] < 0:
+                obstacles.pop(0)
 
-        # Remove off-screen obstacles and generate new ones
-        if obstacles and obstacles[0]['x'] + obstacles[0]['width'] < 0:
-            obstacles.pop(0)
-
-        # Generate new obstacle if needed
-        if obstacles:
-            last_obs = obstacles[-1]
-            if last_obs['x'] < SCREEN_WIDTH:
-                new_obs = generate_obstacle(last_obs)
-                obstacles.append(new_obs)
+            # Generate new obstacle if needed
+            if obstacles:
+                last_obs = obstacles[-1]
+                if last_obs['x'] < SCREEN_WIDTH:
+                    new_obs = generate_obstacle(last_obs)
+                    obstacles.append(new_obs)
 
         # Clear screen
         screen.fill(BLACK)
@@ -272,6 +343,10 @@ def main():
             draw_obstacle(obstacle)
         draw_player(PLAYER_X, player_y)
         draw_score(score)
+
+        # Draw game over overlay if game is over
+        if game_over:
+            draw_game_over()
 
         # Update display
         pygame.display.flip()
