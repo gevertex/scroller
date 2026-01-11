@@ -1,6 +1,7 @@
 import pygame
 import sys
 import random
+import math
 from dataclasses import dataclass, field
 from typing import List, Dict
 
@@ -46,6 +47,16 @@ GAME_OVER_TEXT_SIZE = 32
 GAME_OVER_SUBTEXT_SIZE = 16
 LANDING_TOLERANCE = 5  # Extra pixels below obstacle for landing detection
 
+# Debris/explosion settings
+DEBRIS_COUNT = 16  # Number of pieces the player breaks into
+DEBRIS_SIZE_MIN = 6  # Minimum debris piece size
+DEBRIS_SIZE_MAX = 12  # Maximum debris piece size
+DEBRIS_SPEED_MIN = 3  # Minimum initial velocity
+DEBRIS_SPEED_MAX = 10  # Maximum initial velocity
+DEBRIS_BOUNCE_DAMPING = 0.6  # Energy retained after bounce (0-1)
+DEBRIS_FRICTION = 0.98  # Horizontal slowdown per frame
+DEBRIS_GRAVITY = 0.5  # Gravity for debris (can differ from player)
+
 # Frame rate
 FPS = 60
 
@@ -61,6 +72,7 @@ class GameState:
     game_over: bool
     score: int
     obstacles: List[Dict] = field(default_factory=list)
+    debris: List[Dict] = field(default_factory=list)  # Explosion particles
 
 
 # Pygame objects (initialized at runtime)
@@ -252,6 +264,87 @@ def draw_game_over():
     draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
 
 
+def generate_debris(player_x, player_y):
+    """Generate debris particles from player position for explosion effect.
+
+    Args:
+        player_x: Player's x position
+        player_y: Player's y position
+
+    Returns:
+        List of debris particle dictionaries
+    """
+    debris = []
+    center_x = player_x + PLAYER_WIDTH // 2
+    center_y = player_y + PLAYER_HEIGHT // 2
+
+    for _ in range(DEBRIS_COUNT):
+        # Random angle for explosion direction
+        angle = random.uniform(0, 2 * 3.14159)
+        speed = random.uniform(DEBRIS_SPEED_MIN, DEBRIS_SPEED_MAX)
+
+        # Calculate velocity components
+        vel_x = math.cos(angle) * speed
+        vel_y = math.sin(angle) * speed - 5  # Bias upward for better visual
+
+        # Random starting position within the player bounds
+        start_x = player_x + random.randint(0, PLAYER_WIDTH)
+        start_y = player_y + random.randint(0, PLAYER_HEIGHT)
+
+        debris.append({
+            'x': start_x,
+            'y': start_y,
+            'vel_x': vel_x,
+            'vel_y': vel_y,
+            'size': random.randint(DEBRIS_SIZE_MIN, DEBRIS_SIZE_MAX),
+            'bounces': 0  # Track number of bounces
+        })
+
+    return debris
+
+
+def update_debris(debris_list):
+    """Update debris physics - gravity, movement, and ground bouncing.
+
+    Args:
+        debris_list: List of debris particle dictionaries
+    """
+    for debris in debris_list:
+        # Apply gravity
+        debris['vel_y'] += DEBRIS_GRAVITY
+
+        # Apply friction to horizontal movement
+        debris['vel_x'] *= DEBRIS_FRICTION
+
+        # Update position
+        debris['x'] += debris['vel_x']
+        debris['y'] += debris['vel_y']
+
+        # Ground collision and bounce
+        if debris['y'] + debris['size'] >= GROUND_Y:
+            debris['y'] = GROUND_Y - debris['size']
+            debris['vel_y'] = -debris['vel_y'] * DEBRIS_BOUNCE_DAMPING
+            debris['bounces'] += 1
+
+            # Stop bouncing if velocity is very small
+            if abs(debris['vel_y']) < 1:
+                debris['vel_y'] = 0
+
+
+def draw_debris(debris_list):
+    """Draw all debris particles.
+
+    Args:
+        debris_list: List of debris particle dictionaries
+    """
+    for debris in debris_list:
+        pygame.draw.rect(
+            screen, WHITE,
+            (int(debris['x']), int(debris['y']), debris['size'], debris['size']),
+            LINE_THICKNESS
+        )
+
+
 def check_obstacle_collision(player_x, player_y, prev_player_y, obstacle):
     """Check if player is landing on top of a floating obstacle.
 
@@ -373,6 +466,7 @@ def main():
                 # Game over if player has jumped before and touches ground
                 if state.has_jumped:
                     state.game_over = True
+                    state.debris = generate_debris(PLAYER_X, state.player_y)
                     pygame.mixer.music.stop()
                     if crash_sound:
                         crash_sound.play()
@@ -407,6 +501,10 @@ def main():
                     new_obs = generate_obstacle(last_obs)
                     state.obstacles.append(new_obs)
 
+        # Update debris physics during game over
+        if state.game_over and state.debris:
+            update_debris(state.debris)
+
         # Clear screen
         screen.fill(BLACK)
 
@@ -414,7 +512,13 @@ def main():
         draw_ground()
         for obstacle in state.obstacles:
             draw_obstacle(obstacle)
-        draw_player(PLAYER_X, state.player_y)
+
+        # Draw player or debris depending on game state
+        if state.game_over:
+            draw_debris(state.debris)
+        else:
+            draw_player(PLAYER_X, state.player_y)
+
         draw_score(state.score)
 
         # Draw game over overlay if game is over

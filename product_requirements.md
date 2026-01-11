@@ -57,7 +57,10 @@ A simple side-scrolling jumping game built with Python and Pygame. The game uses
   - Starting on the ground does not trigger game over
   - Only triggered after player has left the ground and returns to it
 - When game over is triggered:
-  - All motion pauses (obstacles stop scrolling, player stops moving)
+  - Player cube explodes into multiple debris pieces
+  - Debris pieces fly outward with random velocities
+  - Debris falls with gravity and bounces on the ground
+  - All obstacle motion pauses
   - "GAME OVER" displayed in large vector text (centered)
   - "PRESS ENTER TO RESET" displayed below in smaller text
 - Press Enter to restart the game with fresh state
