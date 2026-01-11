@@ -5,9 +5,17 @@ import math
 import hmac
 import hashlib
 import json
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
+
+# Detect if running in web browser (pygbag/emscripten)
+try:
+    import platform
+    IS_WEB = platform.system() == "Emscripten"
+except Exception:
+    IS_WEB = False
 
 # Screen settings
 SCREEN_WIDTH = 800
@@ -80,16 +88,22 @@ TRAIL_SPAWN_INTERVAL = 2  # Spawn a trail point every N frames
 TRAIL_POINT_SIZE = 8  # Size of trail squares (much smaller than player)
 TRAIL_FADE_RATE = 0.08  # Base fade rate per frame
 
-# Asset paths
-ASSETS_DIR = Path(__file__).parent / "assets"
-BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
-CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
+# Asset paths - use different resolution for web vs desktop
+if IS_WEB:
+    # On web/pygbag, working directory is set to assets folder
+    # Use simple filenames for audio (they're in the same folder as main.py)
+    BACKGROUND_MUSIC_PATH = Path("background_music.wav")
+    CRASH_SOUND_PATH = Path("crash.wav")
+    HIGH_SCORE_PATH = Path("/data/data/scroller/highscore.json")
+else:
+    ASSETS_DIR = Path(__file__).parent / "assets"
+    BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
+    CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
+    HIGH_SCORE_PATH = Path(__file__).parent / "highscore.json"
 
 # High score settings
-# I realize this won't prevent people from generating their own high scores, but it makes it way harder than just plain text
-# Only prevents casual tampering
-HIGH_SCORE_PATH = Path(__file__).parent / "highscore.json"
-HIGH_SCORE_SECRET = b"jump_game_secret_key_2024"  # HMAC key for tamper protection
+# HMAC signature prevents casual tampering with the score file
+HIGH_SCORE_SECRET = b"jump_game_secret_key_2024"
 
 # FPS display settings
 FPS_DISPLAY_PADDING = 10
@@ -219,6 +233,7 @@ def save_high_score(score: int) -> bool:
     """Save high score to file with tamper protection.
 
     Only saves if the new score is higher than the existing high score.
+    On web (Emscripten), high scores are not persisted.
 
     Args:
         score: The high score to save.
@@ -227,6 +242,10 @@ def save_high_score(score: int) -> bool:
         True if saved successfully.
         False if score is not higher or file could not be written.
     """
+    # File system not available on web
+    if IS_WEB:
+        return False
+
     # Check if new score is actually higher than existing
     current_high = load_high_score()
     if score <= current_high:
@@ -249,7 +268,12 @@ def load_high_score() -> int:
 
     Returns:
         The high score if valid, 0 if file doesn't exist or is tampered.
+        On web (Emscripten), always returns 0.
     """
+    # File system not available on web
+    if IS_WEB:
+        return 0
+
     if not HIGH_SCORE_PATH.exists():
         return 0
 
@@ -280,16 +304,20 @@ def init_pygame() -> Game:
     global _game
     pygame.init()
 
-    # Check if vsync is supported
-    screen = pygame.display.set_mode(
-        (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF, vsync=1
-    )
-
-    # Print display info for diagnostics
-    display_info = pygame.display.Info()
-    print(f"Display: {display_info.current_w}x{display_info.current_h}")
-    print(f"SDL version: {pygame.get_sdl_version()}")
-    print(f"Display driver: {pygame.display.get_driver()}")
+    # Display setup differs between web and desktop
+    if IS_WEB:
+        # Web/pygbag: simple display mode, no vsync parameter
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    else:
+        # Desktop: use vsync for smooth rendering
+        screen = pygame.display.set_mode(
+            (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF, vsync=1
+        )
+        # Print display info for diagnostics
+        display_info = pygame.display.Info()
+        print(f"Display: {display_info.current_w}x{display_info.current_h}")
+        print(f"SDL version: {pygame.get_sdl_version()}")
+        print(f"Display driver: {pygame.display.get_driver()}")
 
     pygame.display.set_caption("Jump Game")
 
@@ -302,20 +330,28 @@ def init_pygame() -> Game:
     clock = pygame.time.Clock()
 
     # Initialize audio
-    pygame.mixer.init()
-
-    # Load and play background music
+    crash_sound = None
     try:
-        pygame.mixer.music.load(str(BACKGROUND_MUSIC_PATH))
-        pygame.mixer.music.play(-1)  # -1 means loop indefinitely
-    except pygame.error:
-        pass  # Music file not found
+        pygame.mixer.init()
 
-    # Load crash sound effect
-    try:
-        crash_sound = pygame.mixer.Sound(str(CRASH_SOUND_PATH))
-    except pygame.error:
-        crash_sound = None  # Sound file not found
+        # Load and play background music
+        try:
+            pygame.mixer.music.load(str(BACKGROUND_MUSIC_PATH))
+            pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+        except pygame.error as e:
+            if not IS_WEB:
+                print(f"Could not load music: {e}")
+
+        # Load crash sound effect
+        try:
+            crash_sound = pygame.mixer.Sound(str(CRASH_SOUND_PATH))
+        except pygame.error as e:
+            if not IS_WEB:
+                print(f"Could not load crash sound: {e}")
+            crash_sound = None
+    except Exception as e:
+        if not IS_WEB:
+            print(f"Could not initialize audio: {e}")
 
     _game = Game(screen=screen, font=font, clock=clock, crash_sound=crash_sound)
     return _game
@@ -769,15 +805,15 @@ def reset_game() -> GameState:
     )
 
 
-def main() -> None:
-    """Main game loop."""
+async def main() -> None:
+    """Main game loop (async for web compatibility via pygbag)."""
     # Initialize pygame
     game = init_pygame()
 
     # Initialize game state
     state = reset_game()
 
-    # Frame timing diagnostics
+    # Frame timing diagnostics (desktop only)
     frame_times = []
     frame_count = 0
 
@@ -788,18 +824,19 @@ def main() -> None:
         # Calculate delta factor (1.0 at target FPS, higher if frame took longer)
         dt = dt_ms / TARGET_FRAME_TIME_MS if dt_ms > 0 else 1.0
 
-        # Track frame times for diagnostics
-        frame_times.append(dt_ms)
-        frame_count += 1
-        if frame_count % 120 == 0:  # Print every 2 seconds
-            avg = sum(frame_times) / len(frame_times)
-            min_t = min(frame_times)
-            max_t = max(frame_times)
-            variance = max_t - min_t
-            print(f"Frame timing (last 120): avg={avg:.1f}ms, min={min_t}ms, max={max_t}ms, variance={variance}ms")
-            if variance > 5:
-                print("  ^ High variance suggests vsync may not be working properly")
-            frame_times = []
+        # Track frame times for diagnostics (desktop only)
+        if not IS_WEB:
+            frame_times.append(dt_ms)
+            frame_count += 1
+            if frame_count % 120 == 0:  # Print every 2 seconds
+                avg = sum(frame_times) / len(frame_times)
+                min_t = min(frame_times)
+                max_t = max(frame_times)
+                variance = max_t - min_t
+                print(f"Frame timing (last 120): avg={avg:.1f}ms, min={min_t}ms, max={max_t}ms, variance={variance}ms")
+                if variance > 5:
+                    print("  ^ High variance suggests vsync may not be working properly")
+                frame_times = []
 
         # Handle events
         for event in pygame.event.get():
@@ -822,7 +859,10 @@ def main() -> None:
                     # Reset the game
                     state = reset_game()
                     # Restart background music
-                    pygame.mixer.music.play(-1)
+                    try:
+                        pygame.mixer.music.play(-1)
+                    except Exception:
+                        pass
 
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -887,9 +927,13 @@ def main() -> None:
                 if state.has_jumped:
                     state.game_over = True
                     state.debris = generate_debris(PLAYER_X, state.player_y)
-                    pygame.mixer.music.stop()
-                    if game.crash_sound:
-                        game.crash_sound.play()
+                    # Stop music and play crash sound
+                    try:
+                        pygame.mixer.music.stop()
+                        if game.crash_sound:
+                            game.crash_sound.play()
+                    except Exception:
+                        pass
                     # Check and save high score
                     if state.score > state.high_score:
                         state.high_score = state.score
@@ -975,9 +1019,11 @@ def main() -> None:
         # Update display
         pygame.display.flip()
 
+        # Yield to browser event loop (required for web/pygbag)
+        await asyncio.sleep(0)
+
     pygame.quit()
-    sys.exit()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
