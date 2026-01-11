@@ -179,7 +179,9 @@ def init_pygame() -> Game:
     """
     global _game
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    screen = pygame.display.set_mode(
+        (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF, vsync=1
+    )
     pygame.display.set_caption("Jump Game")
 
     # Try to load font, but handle if unavailable (Python 3.14 compatibility)
