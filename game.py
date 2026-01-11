@@ -16,6 +16,7 @@ SCREEN_HEIGHT = 400
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
 
 # Player settings
 PLAYER_WIDTH = 40
@@ -197,13 +198,20 @@ def _compute_score_signature(score: int) -> str:
 def save_high_score(score: int) -> bool:
     """Save high score to file with tamper protection.
 
+    Only saves if the new score is higher than the existing high score.
+
     Args:
         score: The high score to save.
 
     Returns:
         True if saved successfully.
-        False if file could not be written (IOError/OSError).
+        False if score is not higher or file could not be written.
     """
+    # Check if new score is actually higher than existing
+    current_high = load_high_score()
+    if score <= current_high:
+        return False
+
     data = {
         "high_score": score,
         "signature": _compute_score_signature(score)
@@ -365,14 +373,16 @@ def draw_digit_raw(x: float, y: float, digit: int, color: tuple, size: int = SCO
                         (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
-def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_digit(
+    x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE, color: tuple = WHITE
+) -> None:
     """Draw a digit with black outline for readability."""
     # Draw black outline at offsets
     for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
                    (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
         draw_digit_raw(x + dx, y + dy, digit, BLACK, size)
-    # Draw white digit on top
-    draw_digit_raw(x, y, digit, WHITE, size)
+    # Draw colored digit on top
+    draw_digit_raw(x, y, digit, color, size)
 
 
 def draw_score(score: int, high_score: int) -> None:
@@ -426,7 +436,7 @@ def draw_obstacle(obstacle: Obstacle) -> None:
                                            obstacle.width, obstacle.height))
 
 
-def draw_text(text: str, y_position: float, size: int = 20) -> None:
+def draw_text(text: str, y_position: float, size: int = 20, color: tuple = WHITE) -> None:
     """Draw text centered on screen using vector digits."""
     # Calculate total width
     char_width = size // 2 + 6
@@ -436,9 +446,9 @@ def draw_text(text: str, y_position: float, size: int = 20) -> None:
     for i, char in enumerate(text):
         x = start_x + i * char_width
         if char.isdigit():
-            draw_digit(x, y_position, int(char), size=size)
+            draw_digit(x, y_position, int(char), size=size, color=color)
         elif char.isalpha():
-            draw_letter(x, y_position, char.upper(), size=size)
+            draw_letter(x, y_position, char.upper(), size=size, color=color)
         # Spaces and other characters are skipped (just add spacing)
 
 
@@ -464,25 +474,27 @@ def draw_letter_raw(x: float, y: float, letter: str, color: tuple, size: int = S
                            (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
-def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_letter(
+    x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE, color: tuple = WHITE
+) -> None:
     """Draw a letter with black outline for readability."""
     # Draw black outline at offsets
     for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
                    (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
         draw_letter_raw(x + dx, y + dy, letter, BLACK, size)
-    # Draw white letter on top
-    draw_letter_raw(x, y, letter, WHITE, size)
+    # Draw colored letter on top
+    draw_letter_raw(x, y, letter, color, size)
 
 
 def draw_game_over(high_score_beaten: bool = False) -> None:
     """Draw game over overlay.
 
     Args:
-        high_score_beaten: If True, display "NEW HIGH SCORE" message.
+        high_score_beaten: If True, display "NEW HIGH SCORE" message in green.
     """
     draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=GAME_OVER_TEXT_SIZE)
     if high_score_beaten:
-        draw_text("NEW HIGH SCORE", SCREEN_HEIGHT // 3 + 45, size=GAME_OVER_SUBTEXT_SIZE)
+        draw_text("NEW HIGH SCORE", SCREEN_HEIGHT // 3 + 45, size=GAME_OVER_SUBTEXT_SIZE, color=GREEN)
         draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 75, size=GAME_OVER_SUBTEXT_SIZE)
     else:
         draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)

@@ -45,6 +45,25 @@ class TestHighScoreSaveLoad:
         """save_high_score should return True on success."""
         assert save_high_score(100) is True
 
+    def test_save_rejects_lower_score(self, clean_high_score_file):
+        """save_high_score should return False if new score is not higher."""
+        save_high_score(100)
+        assert save_high_score(50) is False
+        # Original score should be preserved
+        assert load_high_score() == 100
+
+    def test_save_rejects_equal_score(self, clean_high_score_file):
+        """save_high_score should return False if new score equals current."""
+        save_high_score(100)
+        assert save_high_score(100) is False
+        assert load_high_score() == 100
+
+    def test_save_accepts_higher_score(self, clean_high_score_file):
+        """save_high_score should accept and save a higher score."""
+        save_high_score(50)
+        assert save_high_score(100) is True
+        assert load_high_score() == 100
+
 
 class TestTamperProtection:
     """Test cases for tamper detection."""
