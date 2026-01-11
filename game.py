@@ -66,8 +66,8 @@ JUMP_CUT_MULTIPLIER = 0.5  # Velocity multiplier when releasing jump early
 DEBRIS_UPWARD_BIAS = 5  # Upward velocity added to debris for better visual
 
 # Asset paths
-ASSETS_DIR = Path(__file__).parent
-BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.mp3"
+ASSETS_DIR = Path(__file__).parent / "assets"
+BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
 CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
 
 # FPS display settings

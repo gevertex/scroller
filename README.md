@@ -74,6 +74,9 @@ scroller/
 ├── README.md               # This file
 ├── AGENTS.md               # Development guidelines
 ├── product_requirements.md # Product specifications
+├── assets/
+│   ├── background_music.wav  # Background music
+│   └── crash.wav             # Crash sound effect
 └── tests/
     ├── __init__.py
     ├── conftest.py         # Pytest configuration
