@@ -32,8 +32,10 @@ SPEED_INCREMENT = 0.05  # Speed increase per point scored
 MIN_OBSTACLE_WIDTH = 60
 MAX_OBSTACLE_WIDTH = 150
 OBSTACLE_THICKNESS = 20  # Fixed thickness for all obstacles
-MIN_GAP = 60   # Minimum horizontal gap between obstacles
+MIN_GAP = 60   # Base minimum horizontal gap between obstacles
 MAX_GAP = 130  # Maximum horizontal gap between obstacles
+MIN_JUMP_FRAMES = 18  # Frames for minimum jump (tap) to complete
+GAP_BUFFER = 20  # Extra buffer pixels for comfortable landing
 MAX_JUMP_HEIGHT = 120  # Maximum height player can jump
 MAX_HEIGHT_DIFF = 100  # Max height difference to ensure jumpability
 MIN_PLATFORM_Y = 50   # Highest platforms can go (near top of screen)
@@ -168,6 +170,7 @@ class GameState:
     score: int
     high_score: int
     high_score_beaten: bool = False
+    jump_buffered: bool = False  # Buffer jump input for same-frame landing
     obstacles: List[Obstacle] = field(default_factory=list)
     debris: List[Debris] = field(default_factory=list)
 
@@ -281,21 +284,29 @@ def init_pygame() -> Game:
     return _game
 
 
-def generate_obstacle(last_obstacle: Optional[Obstacle] = None, from_ground: bool = False) -> Obstacle:
+def generate_obstacle(
+    last_obstacle: Optional[Obstacle] = None,
+    from_ground: bool = False,
+    speed: float = BASE_SCROLL_SPEED
+) -> Obstacle:
     """Generate a new floating obstacle that is reachable from the last one.
 
     Args:
         last_obstacle: Previous obstacle to chain from (for reachability).
         from_ground: If True, generate obstacle reachable from ground level.
+        speed: Current scroll speed, used to scale minimum gap for jumpability.
 
     Returns:
         Obstacle: New obstacle instance.
     """
     width = random.randint(MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH)
+    min_gap = get_min_gap(speed)
+    # At high speeds, min_gap may exceed MAX_GAP, so use max of both for upper bound
+    max_gap = max(min_gap, MAX_GAP)
 
     # Position obstacle off-screen to the right
     if last_obstacle and not from_ground:
-        x = last_obstacle.x + last_obstacle.width + random.randint(MIN_GAP, MAX_GAP)
+        x = last_obstacle.x + last_obstacle.width + random.randint(min_gap, max_gap)
         # Ensure platform is reachable from last obstacle
         last_top = last_obstacle.y
         # Player can jump up MAX_JUMP_HEIGHT or fall down any distance
@@ -638,6 +649,25 @@ def get_scroll_speed(score: int) -> float:
     return min(speed, MAX_SCROLL_SPEED)
 
 
+def get_min_gap(speed: float) -> int:
+    """Calculate minimum gap between obstacles based on scroll speed.
+
+    At higher speeds, obstacles need larger gaps to ensure the player
+    can complete a minimum jump and still land on the next platform.
+
+    Args:
+        speed: Current scroll speed in pixels per frame.
+
+    Returns:
+        Minimum gap in pixels, scaled to ensure jumpability.
+    """
+    # During a minimum jump, obstacles scroll: speed * MIN_JUMP_FRAMES
+    # For landing: gap + obstacle_width > scroll_distance
+    # So: gap > scroll_distance - MIN_OBSTACLE_WIDTH
+    required_gap = (speed * MIN_JUMP_FRAMES) - MIN_OBSTACLE_WIDTH + GAP_BUFFER
+    return max(MIN_GAP, int(required_gap))
+
+
 def reset_game() -> GameState:
     """Reset game state for a new game.
 
@@ -690,6 +720,9 @@ def main() -> None:
                         state.is_jumping = True
                         state.jump_held = True
                         state.has_jumped = True
+                    else:
+                        # Buffer jump for same-frame landing
+                        state.jump_buffered = True
 
                 if event.key == pygame.K_RETURN and state.game_over:
                     # Reset the game
@@ -751,6 +784,17 @@ def main() -> None:
                             state.score += 1
                         break
 
+            # Process buffered jump (for same-frame landing)
+            if state.jump_buffered:
+                if on_surface:
+                    # Execute the buffered jump
+                    state.player_velocity_y = JUMP_STRENGTH
+                    state.is_jumping = True
+                    state.jump_held = True
+                    state.has_jumped = True
+                # Clear buffer regardless (don't persist across frames)
+                state.jump_buffered = False
+
             # Move obstacles (speed increases with score)
             current_speed = get_scroll_speed(state.score)
             for obstacle in state.obstacles:
@@ -764,7 +808,7 @@ def main() -> None:
             if state.obstacles:
                 last_obs = state.obstacles[-1]
                 if last_obs.x < SCREEN_WIDTH:
-                    new_obs = generate_obstacle(last_obs)
+                    new_obs = generate_obstacle(last_obs, speed=current_speed)
                     state.obstacles.append(new_obs)
 
         # Update debris physics during game over

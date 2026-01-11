@@ -2,10 +2,12 @@
 import pytest
 
 from game import (
-    generate_obstacle, Obstacle,
+    generate_obstacle, Obstacle, get_min_gap,
     MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH,
     OBSTACLE_THICKNESS,
     MIN_GAP, MAX_GAP,
+    MIN_JUMP_FRAMES, GAP_BUFFER,
+    BASE_SCROLL_SPEED, MAX_SCROLL_SPEED,
     MAX_JUMP_HEIGHT, MAX_HEIGHT_DIFF,
     MIN_PLATFORM_Y, MAX_PLATFORM_Y,
     GROUND_Y, SCREEN_WIDTH
@@ -60,12 +62,12 @@ class TestObstacleGeneration:
             assert obstacle.y <= GROUND_Y
             assert obstacle.y >= MIN_PLATFORM_Y
 
-    def test_chained_obstacle_horizontal_gap(self):
-        """Chained obstacle should maintain proper horizontal gap."""
+    def test_chained_obstacle_horizontal_gap_base_speed(self):
+        """Chained obstacle at base speed should use MIN_GAP."""
         first = generate_obstacle(from_ground=True)
 
         for _ in range(50):
-            second = generate_obstacle(last_obstacle=first)
+            second = generate_obstacle(last_obstacle=first, speed=BASE_SCROLL_SPEED)
             gap = second.x - (first.x + first.width)
             assert MIN_GAP <= gap <= MAX_GAP
 
@@ -115,3 +117,63 @@ class TestObstacleGeneration:
             assert obstacle.y >= MIN_PLATFORM_Y
             assert obstacle.y <= MAX_PLATFORM_Y
             first = obstacle  # Chain them
+
+
+class TestGapScaling:
+    """Test cases for dynamic gap scaling based on speed."""
+
+    def test_get_min_gap_at_base_speed(self):
+        """At base speed, min gap should equal MIN_GAP."""
+        assert get_min_gap(BASE_SCROLL_SPEED) == MIN_GAP
+
+    def test_get_min_gap_increases_with_speed(self):
+        """Min gap should increase as speed increases."""
+        gap_at_base = get_min_gap(BASE_SCROLL_SPEED)
+        gap_at_max = get_min_gap(MAX_SCROLL_SPEED)
+        assert gap_at_max > gap_at_base
+
+    def test_get_min_gap_at_max_speed(self):
+        """At max speed, min gap should ensure jumpability."""
+        min_gap = get_min_gap(MAX_SCROLL_SPEED)
+        # Gap + min obstacle width should exceed scroll distance during jump
+        scroll_distance = MAX_SCROLL_SPEED * MIN_JUMP_FRAMES
+        assert min_gap + MIN_OBSTACLE_WIDTH >= scroll_distance
+
+    def test_get_min_gap_never_below_min(self):
+        """Min gap should never go below MIN_GAP constant."""
+        for speed in [1, 2, 3, 4, 5]:
+            assert get_min_gap(speed) >= MIN_GAP
+
+    def test_get_min_gap_formula(self):
+        """Verify the gap calculation formula."""
+        speed = 10
+        expected = max(MIN_GAP, int((speed * MIN_JUMP_FRAMES) - MIN_OBSTACLE_WIDTH + GAP_BUFFER))
+        assert get_min_gap(speed) == expected
+
+    def test_chained_obstacle_gap_at_max_speed(self):
+        """At max speed, obstacles should have larger gaps."""
+        first = generate_obstacle(from_ground=True)
+        min_gap_at_max = get_min_gap(MAX_SCROLL_SPEED)
+        # At high speeds, max_gap scales up to match min_gap
+        max_gap_at_max = max(min_gap_at_max, MAX_GAP)
+
+        for _ in range(50):
+            second = generate_obstacle(last_obstacle=first, speed=MAX_SCROLL_SPEED)
+            gap = second.x - (first.x + first.width)
+            assert gap >= min_gap_at_max
+            assert gap <= max_gap_at_max
+
+    def test_obstacles_landable_at_max_speed(self):
+        """Obstacles generated at max speed should be theoretically landable."""
+        first = generate_obstacle(from_ground=True)
+
+        for _ in range(50):
+            second = generate_obstacle(last_obstacle=first, speed=MAX_SCROLL_SPEED)
+            gap = second.x - (first.x + first.width)
+
+            # During a minimum jump, the world scrolls this distance
+            scroll_distance = MAX_SCROLL_SPEED * MIN_JUMP_FRAMES
+
+            # For the player to land: gap + obstacle_width > scroll_distance
+            # (approximately, with some buffer for the landing window)
+            assert gap + second.width > scroll_distance - GAP_BUFFER

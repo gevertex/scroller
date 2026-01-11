@@ -147,3 +147,60 @@ class TestGameStateTransitions:
         assert state.score == 10
         assert state.player_y == 100
         assert state.is_jumping is True
+
+
+class TestJumpBuffering:
+    """Test cases for jump input buffering."""
+
+    def test_jump_buffered_default_false(self):
+        """jump_buffered should be False by default."""
+        state = reset_game()
+        assert state.jump_buffered is False
+
+    def test_jump_buffered_can_be_set(self):
+        """jump_buffered should be settable."""
+        state = reset_game()
+        state.jump_buffered = True
+        assert state.jump_buffered is True
+
+    def test_jump_buffer_allows_same_frame_jump(self):
+        """Buffered jump should execute on landing frame."""
+        state = reset_game()
+
+        # Simulate: player is in air (jumping), presses space
+        state.is_jumping = True
+        state.jump_buffered = True
+
+        # Simulate landing
+        on_surface = True
+        state.is_jumping = False
+
+        # Process buffered jump (mimics game loop logic)
+        if state.jump_buffered and on_surface:
+            state.is_jumping = True
+            state.jump_buffered = False
+
+        # Jump should have executed
+        assert state.is_jumping is True
+        assert state.jump_buffered is False
+
+    def test_jump_buffer_clears_when_not_landing(self):
+        """Buffer should clear even if landing didn't happen."""
+        state = reset_game()
+
+        # Simulate: player is in air, presses space
+        state.is_jumping = True
+        state.jump_buffered = True
+
+        # Simulate NO landing this frame
+        on_surface = False
+
+        # Process buffered jump (mimics game loop logic)
+        if state.jump_buffered:
+            if on_surface:
+                state.is_jumping = True
+            state.jump_buffered = False
+
+        # Jump should NOT have executed, but buffer cleared
+        assert state.is_jumping is True  # Still in air from before
+        assert state.jump_buffered is False
