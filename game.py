@@ -70,6 +70,55 @@ ASSETS_DIR = Path(__file__).parent
 BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.mp3"
 CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
 
+# FPS display settings
+FPS_DISPLAY_PADDING = 10
+FPS_DISPLAY_SIZE = 14
+
+# Pre-computed segment definitions for 7-segment digit display
+# Segment positions are relative multipliers of (width, height)
+# Format: (start_x_mult, start_y_mult, end_x_mult, end_y_mult)
+DIGIT_SEGMENTS = {
+    'top':    (0, 0, 1, 0),
+    'mid':    (0, 0.5, 1, 0.5),
+    'bot':    (0, 1, 1, 1),
+    'tl':     (0, 0, 0, 0.5),
+    'tr':     (1, 0, 1, 0.5),
+    'bl':     (0, 0.5, 0, 1),
+    'br':     (1, 0.5, 1, 1),
+}
+
+# Which segments are active for each digit 0-9
+DIGIT_SEGMENT_MAP = {
+    0: ('top', 'bot', 'tl', 'tr', 'bl', 'br'),
+    1: ('tr', 'br'),
+    2: ('top', 'mid', 'bot', 'tr', 'bl'),
+    3: ('top', 'mid', 'bot', 'tr', 'br'),
+    4: ('mid', 'tl', 'tr', 'br'),
+    5: ('top', 'mid', 'bot', 'tl', 'br'),
+    6: ('top', 'mid', 'bot', 'tl', 'bl', 'br'),
+    7: ('top', 'tr', 'br'),
+    8: ('top', 'mid', 'bot', 'tl', 'tr', 'bl', 'br'),
+    9: ('top', 'mid', 'bot', 'tl', 'tr', 'br'),
+}
+
+# Pre-computed letter segment definitions for vector text
+# Format: list of (start_x_mult, start_y_mult, end_x_mult, end_y_mult)
+LETTER_SEGMENTS = {
+    'A': ((0, 1, 0, 0.33), (0, 0.33, 0.5, 0), (0.5, 0, 1, 0.33), (1, 0.33, 1, 1), (0, 0.5, 1, 0.5)),
+    'E': ((0, 0, 0, 1), (0, 0, 1, 0), (0, 0.5, 0.66, 0.5), (0, 1, 1, 1)),
+    'G': ((1, 0.33, 0.5, 0), (0.5, 0, 0, 0.33), (0, 0.33, 0, 0.66), (0, 0.66, 0.5, 1), (0.5, 1, 1, 0.66), (1, 0.66, 1, 0.5), (1, 0.5, 0.5, 0.5)),
+    'M': ((0, 1, 0, 0), (0, 0, 0.5, 0.5), (0.5, 0.5, 1, 0), (1, 0, 1, 1)),
+    'O': ((0, 0.25, 0, 0.75), (0, 0.25, 0.5, 0), (0.5, 0, 1, 0.25), (1, 0.25, 1, 0.75), (1, 0.75, 0.5, 1), (0.5, 1, 0, 0.75)),
+    'P': ((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 1, 0.5), (1, 0.5, 0, 0.5)),
+    'R': ((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 1, 0.5), (1, 0.5, 0, 0.5), (0, 0.5, 1, 1)),
+    'S': ((1, 0.25, 0.5, 0), (0.5, 0, 0, 0.25), (0, 0.25, 0, 0.5), (0, 0.5, 1, 0.5), (1, 0.5, 1, 0.75), (1, 0.75, 0.5, 1), (0.5, 1, 0, 0.75)),
+    'T': ((0, 0, 1, 0), (0.5, 0, 0.5, 1)),
+    'V': ((0, 0, 0.5, 1), (0.5, 1, 1, 0)),
+    'N': ((0, 1, 0, 0), (0, 0, 1, 1), (1, 1, 1, 0)),
+    'I': ((0.25, 0, 0.75, 0), (0.5, 0, 0.5, 1), (0.25, 1, 0.75, 1)),
+    'F': ((0, 1, 0, 0), (0, 0, 1, 0), (0, 0.5, 0.66, 0.5)),
+}
+
 
 @dataclass
 class Obstacle:
@@ -210,41 +259,18 @@ def draw_ground() -> None:
 
 
 def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
-    """Draw a single digit using vector lines (7-segment style)."""
+    """Draw a single digit using vector lines (7-segment style).
+
+    Uses pre-computed DIGIT_SEGMENTS and DIGIT_SEGMENT_MAP constants.
+    """
     w = size // 2  # Width
     h = size       # Height
-    t = LINE_THICKNESS
 
-    # Segment definitions: (start_x, start_y, end_x, end_y) relative to top-left
-    segments = {
-        'top':    (0, 0, w, 0),
-        'mid':    (0, h//2, w, h//2),
-        'bot':    (0, h, w, h),
-        'tl':     (0, 0, 0, h//2),
-        'tr':     (w, 0, w, h//2),
-        'bl':     (0, h//2, 0, h),
-        'br':     (w, h//2, w, h),
-    }
-
-    # Which segments are on for each digit
-    digit_segments = {
-        0: ['top', 'bot', 'tl', 'tr', 'bl', 'br'],
-        1: ['tr', 'br'],
-        2: ['top', 'mid', 'bot', 'tr', 'bl'],
-        3: ['top', 'mid', 'bot', 'tr', 'br'],
-        4: ['mid', 'tl', 'tr', 'br'],
-        5: ['top', 'mid', 'bot', 'tl', 'br'],
-        6: ['top', 'mid', 'bot', 'tl', 'bl', 'br'],
-        7: ['top', 'tr', 'br'],
-        8: ['top', 'mid', 'bot', 'tl', 'tr', 'bl', 'br'],
-        9: ['top', 'mid', 'bot', 'tl', 'tr', 'br'],
-    }
-
-    for seg_name in digit_segments.get(digit, []):
-        seg = segments[seg_name]
+    for seg_name in DIGIT_SEGMENT_MAP.get(digit, ()):
+        seg = DIGIT_SEGMENTS[seg_name]
         pygame.draw.line(_game.screen, WHITE,
-                        (x + seg[0], y + seg[1]),
-                        (x + seg[2], y + seg[3]), t)
+                        (x + seg[0] * w, y + seg[1] * h),
+                        (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
 def draw_score(score: int) -> None:
@@ -286,36 +312,48 @@ def draw_text(text: str, y_position: float, size: int = 20) -> None:
 
 
 def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
-    """Draw a letter using vector lines."""
+    """Draw a letter using vector lines.
+
+    Uses pre-computed LETTER_SEGMENTS constant.
+    """
     w = size // 2
     h = size
-    t = LINE_THICKNESS
 
-    # Simple segment-based letters
-    letter_segments = {
-        'A': [(0, h, 0, h//3), (0, h//3, w//2, 0), (w//2, 0, w, h//3), (w, h//3, w, h), (0, h//2, w, h//2)],
-        'E': [(0, 0, 0, h), (0, 0, w, 0), (0, h//2, w*2//3, h//2), (0, h, w, h)],
-        'G': [(w, h//3, w//2, 0), (w//2, 0, 0, h//3), (0, h//3, 0, h*2//3), (0, h*2//3, w//2, h), (w//2, h, w, h*2//3), (w, h*2//3, w, h//2), (w, h//2, w//2, h//2)],
-        'M': [(0, h, 0, 0), (0, 0, w//2, h//2), (w//2, h//2, w, 0), (w, 0, w, h)],
-        'O': [(0, h//4, 0, h*3//4), (0, h//4, w//2, 0), (w//2, 0, w, h//4), (w, h//4, w, h*3//4), (w, h*3//4, w//2, h), (w//2, h, 0, h*3//4)],
-        'P': [(0, h, 0, 0), (0, 0, w, 0), (w, 0, w, h//2), (w, h//2, 0, h//2)],
-        'R': [(0, h, 0, 0), (0, 0, w, 0), (w, 0, w, h//2), (w, h//2, 0, h//2), (0, h//2, w, h)],
-        'S': [(w, h//4, w//2, 0), (w//2, 0, 0, h//4), (0, h//4, 0, h//2), (0, h//2, w, h//2), (w, h//2, w, h*3//4), (w, h*3//4, w//2, h), (w//2, h, 0, h*3//4)],
-        'T': [(0, 0, w, 0), (w//2, 0, w//2, h)],
-        'V': [(0, 0, w//2, h), (w//2, h, w, 0)],
-        'N': [(0, h, 0, 0), (0, 0, w, h), (w, h, w, 0)],
-        'I': [(w//4, 0, w*3//4, 0), (w//2, 0, w//2, h), (w//4, h, w*3//4, h)],
-    }
-
-    if letter in letter_segments:
-        for seg in letter_segments[letter]:
-            pygame.draw.line(_game.screen, WHITE, (x + seg[0], y + seg[1]), (x + seg[2], y + seg[3]), t)
+    if letter in LETTER_SEGMENTS:
+        for seg in LETTER_SEGMENTS[letter]:
+            pygame.draw.line(_game.screen, WHITE,
+                           (x + seg[0] * w, y + seg[1] * h),
+                           (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
 def draw_game_over() -> None:
     """Draw game over overlay."""
     draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=GAME_OVER_TEXT_SIZE)
     draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
+
+
+def draw_fps(fps: float) -> None:
+    """Draw FPS counter in the top-left corner.
+
+    Args:
+        fps: Current frames per second from clock.get_fps().
+    """
+    fps_int = int(fps)
+
+    if _game.font:
+        text_surface = _game.font.render(f"FPS: {fps_int}", True, WHITE)
+        _game.screen.blit(text_surface, (FPS_DISPLAY_PADDING, FPS_DISPLAY_PADDING))
+    else:
+        # Draw "FPS" text using vector letters
+        draw_letter(FPS_DISPLAY_PADDING, FPS_DISPLAY_PADDING, 'F', size=FPS_DISPLAY_SIZE)
+        draw_letter(FPS_DISPLAY_PADDING + 12, FPS_DISPLAY_PADDING, 'P', size=FPS_DISPLAY_SIZE)
+        draw_letter(FPS_DISPLAY_PADDING + 24, FPS_DISPLAY_PADDING, 'S', size=FPS_DISPLAY_SIZE)
+
+        # Draw FPS digits
+        fps_str = str(fps_int)
+        digit_start_x = FPS_DISPLAY_PADDING + 42
+        for i, char in enumerate(fps_str):
+            draw_digit(digit_start_x + i * 12, FPS_DISPLAY_PADDING, int(char), size=FPS_DISPLAY_SIZE)
 
 
 def generate_debris(player_x: float, player_y: float) -> List[Debris]:
@@ -589,6 +627,9 @@ def main() -> None:
             draw_player(PLAYER_X, state.player_y)
 
         draw_score(state.score)
+
+        # Draw FPS counter
+        draw_fps(game.clock.get_fps())
 
         # Draw game over overlay if game is over
         if state.game_over:
