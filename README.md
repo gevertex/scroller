@@ -19,7 +19,7 @@ A minimalist side-scrolling platform game built with Python and Pygame. Features
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd fun_game
+cd scroller
 ```
 
 2. Create and activate a virtual environment:
@@ -68,7 +68,7 @@ pytest tests/test_game_state.py -v
 ## Project Structure
 
 ```
-fun_game/
+scroller/
 ├── game.py                 # Main game code
 ├── requirements.txt        # Python dependencies
 ├── README.md               # This file
