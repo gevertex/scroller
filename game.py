@@ -2,6 +2,9 @@ import pygame
 import sys
 import random
 import math
+import hmac
+import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -70,6 +73,12 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
 CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
 
+# High score settings
+# I realize this won't prevent people from generating their own high scores, but it makes it way harder than just plain text
+# Only prevents casual tampering
+HIGH_SCORE_PATH = Path(__file__).parent / "highscore.json"
+HIGH_SCORE_SECRET = b"jump_game_secret_key_2024"  # HMAC key for tamper protection
+
 # FPS display settings
 FPS_DISPLAY_PADDING = 10
 FPS_DISPLAY_SIZE = 14
@@ -108,18 +117,21 @@ DIGIT_SEGMENT_MAP = {
 # Format: list of (start_x_mult, start_y_mult, end_x_mult, end_y_mult)
 LETTER_SEGMENTS = {
     'A': ((0, 1, 0, 0.33), (0, 0.33, 0.5, 0), (0.5, 0, 1, 0.33), (1, 0.33, 1, 1), (0, 0.5, 1, 0.5)),
+    'C': ((1, 0.25, 0.5, 0), (0.5, 0, 0, 0.25), (0, 0.25, 0, 0.75), (0, 0.75, 0.5, 1), (0.5, 1, 1, 0.75)),
     'E': ((0, 0, 0, 1), (0, 0, 1, 0), (0, 0.5, 0.66, 0.5), (0, 1, 1, 1)),
+    'F': ((0, 1, 0, 0), (0, 0, 1, 0), (0, 0.5, 0.66, 0.5)),
     'G': ((1, 0.33, 0.5, 0), (0.5, 0, 0, 0.33), (0, 0.33, 0, 0.66), (0, 0.66, 0.5, 1), (0.5, 1, 1, 0.66), (1, 0.66, 1, 0.5), (1, 0.5, 0.5, 0.5)),
+    'H': ((0, 0, 0, 1), (0, 0.5, 1, 0.5), (1, 0, 1, 1)),
+    'I': ((0.25, 0, 0.75, 0), (0.5, 0, 0.5, 1), (0.25, 1, 0.75, 1)),
     'M': ((0, 1, 0, 0), (0, 0, 0.5, 0.5), (0.5, 0.5, 1, 0), (1, 0, 1, 1)),
+    'N': ((0, 1, 0, 0), (0, 0, 1, 1), (1, 1, 1, 0)),
     'O': ((0, 0.25, 0, 0.75), (0, 0.25, 0.5, 0), (0.5, 0, 1, 0.25), (1, 0.25, 1, 0.75), (1, 0.75, 0.5, 1), (0.5, 1, 0, 0.75)),
     'P': ((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 1, 0.5), (1, 0.5, 0, 0.5)),
     'R': ((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 1, 0.5), (1, 0.5, 0, 0.5), (0, 0.5, 1, 1)),
     'S': ((1, 0.25, 0.5, 0), (0.5, 0, 0, 0.25), (0, 0.25, 0, 0.5), (0, 0.5, 1, 0.5), (1, 0.5, 1, 0.75), (1, 0.75, 0.5, 1), (0.5, 1, 0, 0.75)),
     'T': ((0, 0, 1, 0), (0.5, 0, 0.5, 1)),
     'V': ((0, 0, 0.5, 1), (0.5, 1, 1, 0)),
-    'N': ((0, 1, 0, 0), (0, 0, 1, 1), (1, 1, 1, 0)),
-    'I': ((0.25, 0, 0.75, 0), (0.5, 0, 0.5, 1), (0.25, 1, 0.75, 1)),
-    'F': ((0, 1, 0, 0), (0, 0, 1, 0), (0, 0.5, 0.66, 0.5)),
+    'W': ((0, 0, 0.25, 1), (0.25, 1, 0.5, 0.5), (0.5, 0.5, 0.75, 1), (0.75, 1, 1, 0)),
 }
 
 
@@ -154,6 +166,8 @@ class GameState:
     has_jumped: bool
     game_over: bool
     score: int
+    high_score: int
+    high_score_beaten: bool = False
     obstacles: List[Obstacle] = field(default_factory=list)
     debris: List[Debris] = field(default_factory=list)
 
@@ -169,6 +183,60 @@ class Game:
 
 # Global game instance (initialized at runtime)
 _game: Optional[Game] = None
+
+
+def _compute_score_signature(score: int) -> str:
+    """Compute HMAC signature for a score value."""
+    message = str(score).encode()
+    return hmac.new(HIGH_SCORE_SECRET, message, hashlib.sha256).hexdigest()
+
+
+def save_high_score(score: int) -> bool:
+    """Save high score to file with tamper protection.
+
+    Args:
+        score: The high score to save.
+
+    Returns:
+        True if saved successfully, False otherwise.
+    """
+    data = {
+        "high_score": score,
+        "signature": _compute_score_signature(score)
+    }
+    try:
+        with open(HIGH_SCORE_PATH, "w") as f:
+            json.dump(data, f)
+        return True
+    except (IOError, OSError):
+        return False
+
+
+def load_high_score() -> int:
+    """Load high score from file with tamper detection.
+
+    Returns:
+        The high score if valid, 0 if file doesn't exist or is tampered.
+    """
+    if not HIGH_SCORE_PATH.exists():
+        return 0
+
+    try:
+        with open(HIGH_SCORE_PATH, "r") as f:
+            data = json.load(f)
+
+        score = data.get("high_score", 0)
+        signature = data.get("signature", "")
+
+        # Verify signature matches
+        expected_signature = _compute_score_signature(score)
+        if hmac.compare_digest(signature, expected_signature):
+            return score
+        else:
+            # Tampered file - return 0
+            return 0
+    except (IOError, OSError, json.JSONDecodeError, TypeError):
+        return 0
 
 
 def init_pygame() -> Game:
@@ -295,9 +363,10 @@ def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> 
     draw_digit_raw(x, y, digit, WHITE, size)
 
 
-def draw_score(score: int) -> None:
-    """Draw the score in the top right corner with black outline."""
+def draw_score(score: int, high_score: int) -> None:
+    """Draw the score and high score in the top right corner with black outline."""
     if _game.font:
+        # Draw current score
         text = f"Score: {score}"
         text_rect = _game.font.render(text, True, WHITE).get_rect(
             topright=(SCREEN_WIDTH - SCORE_PADDING, SCORE_PADDING))
@@ -309,6 +378,18 @@ def draw_score(score: int) -> None:
         # Draw white text on top
         text_surface = _game.font.render(text, True, WHITE)
         _game.screen.blit(text_surface, text_rect)
+
+        # Draw high score below current score
+        if high_score > 0:
+            hi_text = f"Best: {high_score}"
+            hi_rect = _game.font.render(hi_text, True, WHITE).get_rect(
+                topright=(SCREEN_WIDTH - SCORE_PADDING, SCORE_PADDING + 25))
+            hi_outline = _game.font.render(hi_text, True, BLACK)
+            for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
+                           (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
+                _game.screen.blit(hi_outline, hi_rect.move(dx, dy))
+            hi_surface = _game.font.render(hi_text, True, WHITE)
+            _game.screen.blit(hi_surface, hi_rect)
     else:
         # Draw score using vector digit rendering (already has outline)
         score_str = str(score)
@@ -317,6 +398,14 @@ def draw_score(score: int) -> None:
 
         for i, char in enumerate(score_str):
             draw_digit(start_x + i * SCORE_DIGIT_WIDTH, SCORE_PADDING - 5, int(char))
+
+        # Draw high score below current score using vector rendering
+        if high_score > 0:
+            hi_str = str(high_score)
+            hi_width = len(hi_str) * SCORE_DIGIT_WIDTH
+            hi_start_x = SCREEN_WIDTH - SCORE_PADDING - hi_width
+            for i, char in enumerate(hi_str):
+                draw_digit(hi_start_x + i * SCORE_DIGIT_WIDTH, SCORE_PADDING + 20, int(char))
 
 
 def draw_obstacle(obstacle: Obstacle) -> None:
@@ -373,10 +462,18 @@ def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -
     draw_letter_raw(x, y, letter, WHITE, size)
 
 
-def draw_game_over() -> None:
-    """Draw game over overlay."""
+def draw_game_over(high_score_beaten: bool = False) -> None:
+    """Draw game over overlay.
+
+    Args:
+        high_score_beaten: If True, display "NEW HIGH SCORE" message.
+    """
     draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=GAME_OVER_TEXT_SIZE)
-    draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
+    if high_score_beaten:
+        draw_text("NEW HIGH SCORE", SCREEN_HEIGHT // 3 + 45, size=GAME_OVER_SUBTEXT_SIZE)
+        draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 75, size=GAME_OVER_SUBTEXT_SIZE)
+    else:
+        draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
 
 
 def draw_fps(fps: float) -> None:
@@ -564,6 +661,7 @@ def reset_game() -> GameState:
         has_jumped=False,
         game_over=False,
         score=0,
+        high_score=load_high_score(),
         obstacles=obstacles
     )
 
@@ -632,6 +730,11 @@ def main() -> None:
                     pygame.mixer.music.stop()
                     if game.crash_sound:
                         game.crash_sound.play()
+                    # Check and save high score
+                    if state.score > state.high_score:
+                        state.high_score = state.score
+                        state.high_score_beaten = True
+                        save_high_score(state.score)
 
             # Check obstacle collisions (landing on top)
             if not on_surface and state.player_velocity_y >= 0:
@@ -681,14 +784,14 @@ def main() -> None:
         else:
             draw_player(PLAYER_X, state.player_y)
 
-        draw_score(state.score)
+        draw_score(state.score, state.high_score)
 
         # Draw FPS counter
         draw_fps(game.clock.get_fps())
 
         # Draw game over overlay if game is over
         if state.game_over:
-            draw_game_over()
+            draw_game_over(state.high_score_beaten)
 
         # Update display
         pygame.display.flip()

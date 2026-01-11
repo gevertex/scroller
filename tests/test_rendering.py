@@ -72,6 +72,12 @@ class TestLetterSegments:
         for letter in required:
             assert letter in LETTER_SEGMENTS, f"Missing letter '{letter}' for FPS display"
 
+    def test_letter_segments_has_high_score_letters(self):
+        """LETTER_SEGMENTS should have letters needed for 'NEW HIGH SCORE'."""
+        required = set('NEWHIGHSCOR')  # Unique letters only
+        for letter in required:
+            assert letter in LETTER_SEGMENTS, f"Missing letter '{letter}' for high score text"
+
     def test_letter_segments_values_are_tuples(self):
         """Each letter's segments should be a tuple of line definitions."""
         for letter, segments in LETTER_SEGMENTS.items():

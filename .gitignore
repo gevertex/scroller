@@ -25,3 +25,6 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Game data
+highscore.json
