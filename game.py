@@ -16,6 +16,7 @@ SCREEN_HEIGHT = 400
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
 
 # Player settings
 PLAYER_WIDTH = 40
@@ -32,8 +33,10 @@ SPEED_INCREMENT = 0.05  # Speed increase per point scored
 MIN_OBSTACLE_WIDTH = 60
 MAX_OBSTACLE_WIDTH = 150
 OBSTACLE_THICKNESS = 20  # Fixed thickness for all obstacles
-MIN_GAP = 60   # Minimum horizontal gap between obstacles
+MIN_GAP = 60   # Base minimum horizontal gap between obstacles
 MAX_GAP = 130  # Maximum horizontal gap between obstacles
+MIN_JUMP_FRAMES = 18  # Frames for minimum jump (tap) to complete
+GAP_BUFFER = 20  # Extra buffer pixels for comfortable landing
 MAX_JUMP_HEIGHT = 120  # Maximum height player can jump
 MAX_HEIGHT_DIFF = 100  # Max height difference to ensure jumpability
 MIN_PLATFORM_Y = 50   # Highest platforms can go (near top of screen)
@@ -67,6 +70,12 @@ FPS = 60
 # Jump mechanics
 JUMP_CUT_MULTIPLIER = 0.5  # Velocity multiplier when releasing jump early
 DEBRIS_UPWARD_BIAS = 5  # Upward velocity added to debris for better visual
+
+# Trail settings (visual effect during jump)
+TRAIL_MAX_POINTS = 12  # Maximum number of trail points
+TRAIL_SPAWN_INTERVAL = 2  # Spawn a trail point every N frames
+TRAIL_POINT_SIZE = 8  # Size of trail squares (much smaller than player)
+TRAIL_FADE_RATE = 0.08  # Base fade rate per frame
 
 # Asset paths
 ASSETS_DIR = Path(__file__).parent / "assets"
@@ -157,6 +166,14 @@ class Debris:
 
 
 @dataclass
+class TrailPoint:
+    """Represents a point in the player's jump trail."""
+    x: float
+    y: float
+    opacity: float  # 0.0 to 1.0
+
+
+@dataclass
 class GameState:
     """Holds all mutable game state."""
     player_y: float
@@ -168,8 +185,11 @@ class GameState:
     score: int
     high_score: int
     high_score_beaten: bool = False
+    jump_buffered: bool = False  # Buffer jump input for same-frame landing
+    trail_frame_counter: int = 0  # Counter for trail spawn timing
     obstacles: List[Obstacle] = field(default_factory=list)
     debris: List[Debris] = field(default_factory=list)
+    trail: List[TrailPoint] = field(default_factory=list)
 
 
 @dataclass
@@ -194,13 +214,20 @@ def _compute_score_signature(score: int) -> str:
 def save_high_score(score: int) -> bool:
     """Save high score to file with tamper protection.
 
+    Only saves if the new score is higher than the existing high score.
+
     Args:
         score: The high score to save.
 
     Returns:
         True if saved successfully.
-        False if file could not be written (IOError/OSError).
+        False if score is not higher or file could not be written.
     """
+    # Check if new score is actually higher than existing
+    current_high = load_high_score()
+    if score <= current_high:
+        return False
+
     data = {
         "high_score": score,
         "signature": _compute_score_signature(score)
@@ -281,21 +308,29 @@ def init_pygame() -> Game:
     return _game
 
 
-def generate_obstacle(last_obstacle: Optional[Obstacle] = None, from_ground: bool = False) -> Obstacle:
+def generate_obstacle(
+    last_obstacle: Optional[Obstacle] = None,
+    from_ground: bool = False,
+    speed: float = BASE_SCROLL_SPEED
+) -> Obstacle:
     """Generate a new floating obstacle that is reachable from the last one.
 
     Args:
         last_obstacle: Previous obstacle to chain from (for reachability).
         from_ground: If True, generate obstacle reachable from ground level.
+        speed: Current scroll speed, used to scale minimum gap for jumpability.
 
     Returns:
         Obstacle: New obstacle instance.
     """
     width = random.randint(MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH)
+    min_gap = get_min_gap(speed)
+    # At high speeds, min_gap may exceed MAX_GAP, so use max of both for upper bound
+    max_gap = max(min_gap, MAX_GAP)
 
     # Position obstacle off-screen to the right
     if last_obstacle and not from_ground:
-        x = last_obstacle.x + last_obstacle.width + random.randint(MIN_GAP, MAX_GAP)
+        x = last_obstacle.x + last_obstacle.width + random.randint(min_gap, max_gap)
         # Ensure platform is reachable from last obstacle
         last_top = last_obstacle.y
         # Player can jump up MAX_JUMP_HEIGHT or fall down any distance
@@ -327,6 +362,24 @@ def draw_player(x: float, y: float) -> None:
     pygame.draw.rect(_game.screen, WHITE, (x, y, PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
 
 
+def draw_trail(trail: List[TrailPoint]) -> None:
+    """Draw the player's jump trail with fading opacity.
+
+    Trail points are drawn as small filled squares that fade from white to black
+    based on their opacity value. Points scroll with the world.
+    """
+    for point in trail:
+        if point.opacity <= 0:
+            continue
+        # Interpolate color between black and white based on opacity
+        color_value = int(255 * point.opacity)
+        color = (color_value, color_value, color_value)
+        pygame.draw.rect(
+            _game.screen, color,
+            (point.x, point.y, TRAIL_POINT_SIZE, TRAIL_POINT_SIZE)
+        )
+
+
 def draw_ground() -> None:
     """Draw the ground line."""
     pygame.draw.line(_game.screen, WHITE, (0, GROUND_Y), (SCREEN_WIDTH, GROUND_Y), LINE_THICKNESS)
@@ -354,14 +407,16 @@ def draw_digit_raw(x: float, y: float, digit: int, color: tuple, size: int = SCO
                         (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
-def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_digit(
+    x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE, color: tuple = WHITE
+) -> None:
     """Draw a digit with black outline for readability."""
     # Draw black outline at offsets
     for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
                    (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
         draw_digit_raw(x + dx, y + dy, digit, BLACK, size)
-    # Draw white digit on top
-    draw_digit_raw(x, y, digit, WHITE, size)
+    # Draw colored digit on top
+    draw_digit_raw(x, y, digit, color, size)
 
 
 def draw_score(score: int, high_score: int) -> None:
@@ -415,7 +470,7 @@ def draw_obstacle(obstacle: Obstacle) -> None:
                                            obstacle.width, obstacle.height))
 
 
-def draw_text(text: str, y_position: float, size: int = 20) -> None:
+def draw_text(text: str, y_position: float, size: int = 20, color: tuple = WHITE) -> None:
     """Draw text centered on screen using vector digits."""
     # Calculate total width
     char_width = size // 2 + 6
@@ -425,9 +480,9 @@ def draw_text(text: str, y_position: float, size: int = 20) -> None:
     for i, char in enumerate(text):
         x = start_x + i * char_width
         if char.isdigit():
-            draw_digit(x, y_position, int(char), size=size)
+            draw_digit(x, y_position, int(char), size=size, color=color)
         elif char.isalpha():
-            draw_letter(x, y_position, char.upper(), size=size)
+            draw_letter(x, y_position, char.upper(), size=size, color=color)
         # Spaces and other characters are skipped (just add spacing)
 
 
@@ -453,25 +508,27 @@ def draw_letter_raw(x: float, y: float, letter: str, color: tuple, size: int = S
                            (x + seg[2] * w, y + seg[3] * h), LINE_THICKNESS)
 
 
-def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
+def draw_letter(
+    x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE, color: tuple = WHITE
+) -> None:
     """Draw a letter with black outline for readability."""
     # Draw black outline at offsets
     for dx, dy in [(-TEXT_OUTLINE_OFFSET, 0), (TEXT_OUTLINE_OFFSET, 0),
                    (0, -TEXT_OUTLINE_OFFSET), (0, TEXT_OUTLINE_OFFSET)]:
         draw_letter_raw(x + dx, y + dy, letter, BLACK, size)
-    # Draw white letter on top
-    draw_letter_raw(x, y, letter, WHITE, size)
+    # Draw colored letter on top
+    draw_letter_raw(x, y, letter, color, size)
 
 
 def draw_game_over(high_score_beaten: bool = False) -> None:
     """Draw game over overlay.
 
     Args:
-        high_score_beaten: If True, display "NEW HIGH SCORE" message.
+        high_score_beaten: If True, display "NEW HIGH SCORE" message in green.
     """
     draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=GAME_OVER_TEXT_SIZE)
     if high_score_beaten:
-        draw_text("NEW HIGH SCORE", SCREEN_HEIGHT // 3 + 45, size=GAME_OVER_SUBTEXT_SIZE)
+        draw_text("NEW HIGH SCORE", SCREEN_HEIGHT // 3 + 45, size=GAME_OVER_SUBTEXT_SIZE, color=GREEN)
         draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 75, size=GAME_OVER_SUBTEXT_SIZE)
     else:
         draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
@@ -638,6 +695,25 @@ def get_scroll_speed(score: int) -> float:
     return min(speed, MAX_SCROLL_SPEED)
 
 
+def get_min_gap(speed: float) -> int:
+    """Calculate minimum gap between obstacles based on scroll speed.
+
+    At higher speeds, obstacles need larger gaps to ensure the player
+    can complete a minimum jump and still land on the next platform.
+
+    Args:
+        speed: Current scroll speed in pixels per frame.
+
+    Returns:
+        Minimum gap in pixels, scaled to ensure jumpability.
+    """
+    # During a minimum jump, obstacles scroll: speed * MIN_JUMP_FRAMES
+    # For landing: gap + obstacle_width > scroll_distance
+    # So: gap > scroll_distance - MIN_OBSTACLE_WIDTH
+    required_gap = (speed * MIN_JUMP_FRAMES) - MIN_OBSTACLE_WIDTH + GAP_BUFFER
+    return max(MIN_GAP, int(required_gap))
+
+
 def reset_game() -> GameState:
     """Reset game state for a new game.
 
@@ -690,6 +766,9 @@ def main() -> None:
                         state.is_jumping = True
                         state.jump_held = True
                         state.has_jumped = True
+                    else:
+                        # Buffer jump for same-frame landing
+                        state.jump_buffered = True
 
                 if event.key == pygame.K_RETURN and state.game_over:
                     # Reset the game
@@ -715,6 +794,38 @@ def main() -> None:
             # Apply gravity
             state.player_velocity_y += GRAVITY
             state.player_y += state.player_velocity_y
+
+            # Update jump trail
+            if state.player_velocity_y < 0:  # Ascending - spawn new trail points
+                state.trail_frame_counter += 1
+                if state.trail_frame_counter >= TRAIL_SPAWN_INTERVAL:
+                    state.trail_frame_counter = 0
+                    # Add new trail point at lower left corner of player
+                    state.trail.append(TrailPoint(
+                        x=PLAYER_X,
+                        y=state.player_y + PLAYER_HEIGHT - TRAIL_POINT_SIZE,
+                        opacity=1.0
+                    ))
+                    # Limit trail length
+                    if len(state.trail) > TRAIL_MAX_POINTS:
+                        state.trail.pop(0)
+
+                # Fade trail based on how close to apex (velocity approaching 0)
+                # Velocity ranges from JUMP_STRENGTH (-15) to 0
+                # Fade rate increases as velocity approaches 0
+                fade_rate = 1.0 - (state.player_velocity_y / JUMP_STRENGTH)
+                fade_amount = TRAIL_FADE_RATE + (TRAIL_FADE_RATE * fade_rate)
+                for point in state.trail:
+                    point.opacity -= fade_amount
+            else:
+                # Not ascending - stop spawning but let existing trail fade
+                state.trail_frame_counter = 0
+                # Continue fading existing trail points
+                for point in state.trail:
+                    point.opacity -= TRAIL_FADE_RATE * 2  # Fade faster after apex
+
+            # Remove fully faded or off-screen points
+            state.trail = [p for p in state.trail if p.opacity > 0 and p.x > -TRAIL_POINT_SIZE]
 
             # Check ground collision
             on_surface = False
@@ -751,10 +862,25 @@ def main() -> None:
                             state.score += 1
                         break
 
+            # Process buffered jump (for same-frame landing)
+            if state.jump_buffered:
+                if on_surface:
+                    # Execute the buffered jump
+                    state.player_velocity_y = JUMP_STRENGTH
+                    state.is_jumping = True
+                    state.jump_held = True
+                    state.has_jumped = True
+                # Clear buffer regardless (don't persist across frames)
+                state.jump_buffered = False
+
             # Move obstacles (speed increases with score)
             current_speed = get_scroll_speed(state.score)
             for obstacle in state.obstacles:
                 obstacle.x -= current_speed
+
+            # Move trail points with the world
+            for point in state.trail:
+                point.x -= current_speed
 
             # Remove off-screen obstacles and generate new ones
             if state.obstacles and state.obstacles[0].x + state.obstacles[0].width < 0:
@@ -764,7 +890,7 @@ def main() -> None:
             if state.obstacles:
                 last_obs = state.obstacles[-1]
                 if last_obs.x < SCREEN_WIDTH:
-                    new_obs = generate_obstacle(last_obs)
+                    new_obs = generate_obstacle(last_obs, speed=current_speed)
                     state.obstacles.append(new_obs)
 
         # Update debris physics during game over
@@ -783,6 +909,8 @@ def main() -> None:
         if state.game_over:
             draw_debris(state.debris)
         else:
+            # Draw trail behind player
+            draw_trail(state.trail)
             draw_player(PLAYER_X, state.player_y)
 
         draw_score(state.score, state.high_score)
