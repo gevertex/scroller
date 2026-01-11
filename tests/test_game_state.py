@@ -4,6 +4,7 @@ import pytest
 from game import (
     reset_game, GameState, TrailPoint,
     GROUND_Y, PLAYER_HEIGHT, PLAYER_WIDTH, INITIAL_OBSTACLE_COUNT,
+    OBSTACLE_THICKNESS,
     TRAIL_MAX_POINTS, TRAIL_SPAWN_INTERVAL, TRAIL_POINT_SIZE, TRAIL_FADE_RATE
 )
 
@@ -16,10 +17,11 @@ class TestResetGame:
         result = reset_game()
         assert isinstance(result, GameState)
 
-    def test_reset_player_starts_on_ground(self):
-        """Player should start on the ground after reset."""
+    def test_reset_player_starts_on_starting_platform(self):
+        """Player should start on the starting platform after reset."""
         state = reset_game()
-        expected_y = GROUND_Y - PLAYER_HEIGHT
+        # Player starts on the starting platform (which sits on the ground)
+        expected_y = GROUND_Y - OBSTACLE_THICKNESS - PLAYER_HEIGHT
         assert state.player_y == expected_y
 
     def test_reset_velocity_is_zero(self):
@@ -37,10 +39,10 @@ class TestResetGame:
         state = reset_game()
         assert state.jump_held is False
 
-    def test_reset_has_not_jumped(self):
-        """has_jumped should be False after reset."""
+    def test_reset_has_jumped_set(self):
+        """has_jumped should be True after reset (falling to ground is death)."""
         state = reset_game()
-        assert state.has_jumped is False
+        assert state.has_jumped is True
 
     def test_reset_not_game_over(self):
         """game_over should be False after reset."""
@@ -55,13 +57,16 @@ class TestResetGame:
     def test_reset_generates_obstacles(self):
         """Reset should generate initial obstacles."""
         state = reset_game()
-        # 1 first obstacle + INITIAL_OBSTACLE_COUNT more
-        assert len(state.obstacles) == INITIAL_OBSTACLE_COUNT + 1
+        # starting platform + 1 first obstacle + INITIAL_OBSTACLE_COUNT more
+        assert len(state.obstacles) == INITIAL_OBSTACLE_COUNT + 2
 
     def test_reset_obstacles_not_scored(self):
-        """All obstacles should be unscored after reset."""
+        """All obstacles (except starting platform) should be unscored after reset."""
         state = reset_game()
-        for obs in state.obstacles:
+        # First obstacle is the starting platform (pre-scored)
+        assert state.obstacles[0].scored is True
+        # All other obstacles should be unscored
+        for obs in state.obstacles[1:]:
             assert obs.scored is False
 
 
@@ -69,9 +74,10 @@ class TestGameOverLogic:
     """Test cases for game over detection logic."""
 
     def test_game_over_not_triggered_at_start(self):
-        """Game over should not trigger when starting on ground."""
+        """Game over should not trigger when starting on platform."""
         state = reset_game()
-        assert state.has_jumped is False
+        # has_jumped is True but game_over is False since player is on platform
+        assert state.has_jumped is True
         assert state.game_over is False
 
     def test_game_over_condition_requires_prior_jump(self):
@@ -104,22 +110,19 @@ class TestGameOverLogic:
             assert state.player_velocity_y == 0
             assert state.is_jumping is False
             assert state.jump_held is False
-            assert state.has_jumped is False
+            assert state.has_jumped is True  # Falling to ground is death
             assert state.game_over is False
             assert state.score == 0
-            assert len(state.obstacles) == INITIAL_OBSTACLE_COUNT + 1
+            # starting platform + 1 first obstacle + INITIAL_OBSTACLE_COUNT more
+            assert len(state.obstacles) == INITIAL_OBSTACLE_COUNT + 2
 
 
 class TestGameStateTransitions:
     """Test game state transitions."""
 
-    def test_jump_sets_has_jumped(self):
-        """Jumping should set has_jumped to True."""
+    def test_has_jumped_starts_true(self):
+        """has_jumped should be True from the start (falling to ground is death)."""
         state = reset_game()
-        assert state.has_jumped is False
-
-        # Simulate jump
-        state.has_jumped = True
         assert state.has_jumped is True
 
     def test_game_over_pauses_updates(self):
