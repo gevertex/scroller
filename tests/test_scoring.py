@@ -1,7 +1,5 @@
 """Tests for scoring mechanics."""
 import pytest
-import sys
-sys.path.insert(0, '/Users/georgesapp/Documents/gitrepos/fun_game')
 
 from game import generate_obstacle
 

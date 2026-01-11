@@ -71,6 +71,7 @@ A simple side-scrolling jumping game built with Python and Pygame. The game uses
 - Background music plays during gameplay (background_music.mp3)
 - Music loops continuously while game is active
 - Music stops when game over is triggered
+- Crash sound effect plays on game over (crash.m4a)
 - Music restarts when game is reset
 
 ## Future Considerations

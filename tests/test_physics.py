@@ -1,7 +1,5 @@
 """Tests for physics mechanics."""
 import pytest
-import sys
-sys.path.insert(0, '/Users/georgesapp/Documents/gitrepos/fun_game')
 
 from game import (
     GRAVITY, JUMP_STRENGTH, GROUND_Y,
