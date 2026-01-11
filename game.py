@@ -3,7 +3,8 @@ import sys
 import random
 import math
 from dataclasses import dataclass, field
-from typing import List, Dict
+from pathlib import Path
+from typing import List, Optional
 
 # Screen settings
 SCREEN_WIDTH = 800
@@ -60,6 +61,36 @@ DEBRIS_GRAVITY = 0.5  # Gravity for debris (can differ from player)
 # Frame rate
 FPS = 60
 
+# Jump mechanics
+JUMP_CUT_MULTIPLIER = 0.5  # Velocity multiplier when releasing jump early
+DEBRIS_UPWARD_BIAS = 5  # Upward velocity added to debris for better visual
+
+# Asset paths
+ASSETS_DIR = Path(__file__).parent
+BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.mp3"
+CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
+
+
+@dataclass
+class Obstacle:
+    """Represents a floating platform obstacle."""
+    x: float
+    y: float
+    width: float
+    height: float
+    scored: bool = False
+
+
+@dataclass
+class Debris:
+    """Represents a debris particle from player explosion."""
+    x: float
+    y: float
+    vel_x: float
+    vel_y: float
+    size: int
+    bounces: int = 0
+
 
 @dataclass
 class GameState:
@@ -71,28 +102,40 @@ class GameState:
     has_jumped: bool
     game_over: bool
     score: int
-    obstacles: List[Dict] = field(default_factory=list)
-    debris: List[Dict] = field(default_factory=list)  # Explosion particles
+    obstacles: List[Obstacle] = field(default_factory=list)
+    debris: List[Debris] = field(default_factory=list)
 
 
-# Pygame objects (initialized at runtime)
-screen = None
-font = None
-clock = None
-crash_sound = None
+@dataclass
+class Game:
+    """Encapsulates pygame runtime objects."""
+    screen: pygame.Surface
+    font: Optional[pygame.font.Font]
+    clock: pygame.time.Clock
+    crash_sound: Optional[pygame.mixer.Sound]
 
 
-def init_pygame():
-    """Initialize pygame and create display objects."""
-    global screen, font, clock, crash_sound
+# Global game instance (initialized at runtime)
+_game: Optional[Game] = None
+
+
+def init_pygame() -> Game:
+    """Initialize pygame and create display objects.
+
+    Returns:
+        Game: Initialized game instance with pygame objects.
+    """
+    global _game
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Jump Game")
+
     # Try to load font, but handle if unavailable (Python 3.14 compatibility)
     try:
         font = pygame.font.Font(None, 36)
     except (NotImplementedError, ImportError):
         font = None
+
     clock = pygame.time.Clock()
 
     # Initialize audio
@@ -100,27 +143,38 @@ def init_pygame():
 
     # Load and play background music
     try:
-        pygame.mixer.music.load("background_music.mp3")
+        pygame.mixer.music.load(str(BACKGROUND_MUSIC_PATH))
         pygame.mixer.music.play(-1)  # -1 means loop indefinitely
     except pygame.error:
         pass  # Music file not found
 
     # Load crash sound effect
     try:
-        crash_sound = pygame.mixer.Sound("crash.wav")
+        crash_sound = pygame.mixer.Sound(str(CRASH_SOUND_PATH))
     except pygame.error:
         crash_sound = None  # Sound file not found
 
+    _game = Game(screen=screen, font=font, clock=clock, crash_sound=crash_sound)
+    return _game
 
-def generate_obstacle(last_obstacle=None, from_ground=False):
-    """Generate a new floating obstacle that is reachable from the last one."""
+
+def generate_obstacle(last_obstacle: Optional[Obstacle] = None, from_ground: bool = False) -> Obstacle:
+    """Generate a new floating obstacle that is reachable from the last one.
+
+    Args:
+        last_obstacle: Previous obstacle to chain from (for reachability).
+        from_ground: If True, generate obstacle reachable from ground level.
+
+    Returns:
+        Obstacle: New obstacle instance.
+    """
     width = random.randint(MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH)
 
     # Position obstacle off-screen to the right
     if last_obstacle and not from_ground:
-        x = last_obstacle['x'] + last_obstacle['width'] + random.randint(MIN_GAP, MAX_GAP)
+        x = last_obstacle.x + last_obstacle.width + random.randint(MIN_GAP, MAX_GAP)
         # Ensure platform is reachable from last obstacle
-        last_top = last_obstacle['y']
+        last_top = last_obstacle.y
         # Player can jump up MAX_JUMP_HEIGHT or fall down any distance
         # New platform top should be within jumpable range (can go up or down)
         min_y = max(MIN_PLATFORM_Y, last_top - MAX_JUMP_HEIGHT)  # Can jump up this much
@@ -136,26 +190,26 @@ def generate_obstacle(last_obstacle=None, from_ground=False):
         x = SCREEN_WIDTH + random.randint(INITIAL_OBSTACLE_OFFSET_MIN, INITIAL_OBSTACLE_OFFSET_MAX)
         y = random.randint(MIN_PLATFORM_Y, MAX_PLATFORM_Y)
 
-    return {
-        'x': x,
-        'y': y,
-        'width': width,
-        'height': OBSTACLE_THICKNESS,  # Fixed thickness for all platforms
-        'scored': False  # Track if player has landed on this
-    }
+    return Obstacle(
+        x=x,
+        y=y,
+        width=width,
+        height=OBSTACLE_THICKNESS,
+        scored=False
+    )
 
 
-def draw_player(x, y):
+def draw_player(x: float, y: float) -> None:
     """Draw the player as a white outlined rectangle."""
-    pygame.draw.rect(screen, WHITE, (x, y, PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
+    pygame.draw.rect(_game.screen, WHITE, (x, y, PLAYER_WIDTH, PLAYER_HEIGHT), LINE_THICKNESS)
 
 
-def draw_ground():
+def draw_ground() -> None:
     """Draw the ground line."""
-    pygame.draw.line(screen, WHITE, (0, GROUND_Y), (SCREEN_WIDTH, GROUND_Y), LINE_THICKNESS)
+    pygame.draw.line(_game.screen, WHITE, (0, GROUND_Y), (SCREEN_WIDTH, GROUND_Y), LINE_THICKNESS)
 
 
-def draw_digit(x, y, digit, size=SCORE_DIGIT_SIZE):
+def draw_digit(x: float, y: float, digit: int, size: int = SCORE_DIGIT_SIZE) -> None:
     """Draw a single digit using vector lines (7-segment style)."""
     w = size // 2  # Width
     h = size       # Height
@@ -188,17 +242,17 @@ def draw_digit(x, y, digit, size=SCORE_DIGIT_SIZE):
 
     for seg_name in digit_segments.get(digit, []):
         seg = segments[seg_name]
-        pygame.draw.line(screen, WHITE,
+        pygame.draw.line(_game.screen, WHITE,
                         (x + seg[0], y + seg[1]),
                         (x + seg[2], y + seg[3]), t)
 
 
-def draw_score(score):
+def draw_score(score: int) -> None:
     """Draw the score in the top right corner."""
-    if font:
-        text_surface = font.render(f"Score: {score}", True, WHITE)
+    if _game.font:
+        text_surface = _game.font.render(f"Score: {score}", True, WHITE)
         text_rect = text_surface.get_rect(topright=(SCREEN_WIDTH - SCORE_PADDING, SCORE_PADDING))
-        screen.blit(text_surface, text_rect)
+        _game.screen.blit(text_surface, text_rect)
     else:
         # Draw score using vector digit rendering
         score_str = str(score)
@@ -209,13 +263,13 @@ def draw_score(score):
             draw_digit(start_x + i * SCORE_DIGIT_WIDTH, SCORE_PADDING - 5, int(char))
 
 
-def draw_obstacle(obstacle):
+def draw_obstacle(obstacle: Obstacle) -> None:
     """Draw an obstacle as a solid white rectangle."""
-    pygame.draw.rect(screen, WHITE, (obstacle['x'], obstacle['y'],
-                                      obstacle['width'], obstacle['height']))
+    pygame.draw.rect(_game.screen, WHITE, (obstacle.x, obstacle.y,
+                                           obstacle.width, obstacle.height))
 
 
-def draw_text(text, y_position, size=20):
+def draw_text(text: str, y_position: float, size: int = 20) -> None:
     """Draw text centered on screen using vector digits."""
     # Calculate total width
     char_width = size // 2 + 6
@@ -231,7 +285,7 @@ def draw_text(text, y_position, size=20):
         # Spaces and other characters are skipped (just add spacing)
 
 
-def draw_letter(x, y, letter, size=SCORE_DIGIT_SIZE):
+def draw_letter(x: float, y: float, letter: str, size: int = SCORE_DIGIT_SIZE) -> None:
     """Draw a letter using vector lines."""
     w = size // 2
     h = size
@@ -255,16 +309,16 @@ def draw_letter(x, y, letter, size=SCORE_DIGIT_SIZE):
 
     if letter in letter_segments:
         for seg in letter_segments[letter]:
-            pygame.draw.line(screen, WHITE, (x + seg[0], y + seg[1]), (x + seg[2], y + seg[3]), t)
+            pygame.draw.line(_game.screen, WHITE, (x + seg[0], y + seg[1]), (x + seg[2], y + seg[3]), t)
 
 
-def draw_game_over():
+def draw_game_over() -> None:
     """Draw game over overlay."""
     draw_text("GAME OVER", SCREEN_HEIGHT // 3, size=GAME_OVER_TEXT_SIZE)
     draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=GAME_OVER_SUBTEXT_SIZE)
 
 
-def generate_debris(player_x, player_y):
+def generate_debris(player_x: float, player_y: float) -> List[Debris]:
     """Generate debris particles from player position for explosion effect.
 
     Args:
@@ -272,94 +326,101 @@ def generate_debris(player_x, player_y):
         player_y: Player's y position
 
     Returns:
-        List of debris particle dictionaries
+        List of Debris instances.
     """
-    debris = []
-    center_x = player_x + PLAYER_WIDTH // 2
-    center_y = player_y + PLAYER_HEIGHT // 2
+    debris_list = []
 
     for _ in range(DEBRIS_COUNT):
         # Random angle for explosion direction
-        angle = random.uniform(0, 2 * 3.14159)
+        angle = random.uniform(0, 2 * math.pi)
         speed = random.uniform(DEBRIS_SPEED_MIN, DEBRIS_SPEED_MAX)
 
         # Calculate velocity components
         vel_x = math.cos(angle) * speed
-        vel_y = math.sin(angle) * speed - 5  # Bias upward for better visual
+        vel_y = math.sin(angle) * speed - DEBRIS_UPWARD_BIAS
 
         # Random starting position within the player bounds
         start_x = player_x + random.randint(0, PLAYER_WIDTH)
         start_y = player_y + random.randint(0, PLAYER_HEIGHT)
 
-        debris.append({
-            'x': start_x,
-            'y': start_y,
-            'vel_x': vel_x,
-            'vel_y': vel_y,
-            'size': random.randint(DEBRIS_SIZE_MIN, DEBRIS_SIZE_MAX),
-            'bounces': 0  # Track number of bounces
-        })
+        debris_list.append(Debris(
+            x=start_x,
+            y=start_y,
+            vel_x=vel_x,
+            vel_y=vel_y,
+            size=random.randint(DEBRIS_SIZE_MIN, DEBRIS_SIZE_MAX),
+            bounces=0
+        ))
 
-    return debris
+    return debris_list
 
 
-def update_debris(debris_list):
+def update_debris(debris_list: List[Debris]) -> None:
     """Update debris physics - gravity, movement, and ground bouncing.
 
     Args:
-        debris_list: List of debris particle dictionaries
+        debris_list: List of Debris instances.
     """
     for debris in debris_list:
         # Apply gravity
-        debris['vel_y'] += DEBRIS_GRAVITY
+        debris.vel_y += DEBRIS_GRAVITY
 
         # Apply friction to horizontal movement
-        debris['vel_x'] *= DEBRIS_FRICTION
+        debris.vel_x *= DEBRIS_FRICTION
 
         # Update position
-        debris['x'] += debris['vel_x']
-        debris['y'] += debris['vel_y']
+        debris.x += debris.vel_x
+        debris.y += debris.vel_y
 
         # Ground collision and bounce
-        if debris['y'] + debris['size'] >= GROUND_Y:
-            debris['y'] = GROUND_Y - debris['size']
-            debris['vel_y'] = -debris['vel_y'] * DEBRIS_BOUNCE_DAMPING
-            debris['bounces'] += 1
+        if debris.y + debris.size >= GROUND_Y:
+            debris.y = GROUND_Y - debris.size
+            debris.vel_y = -debris.vel_y * DEBRIS_BOUNCE_DAMPING
+            debris.bounces += 1
 
             # Stop bouncing if velocity is very small
-            if abs(debris['vel_y']) < 1:
-                debris['vel_y'] = 0
+            if abs(debris.vel_y) < 1:
+                debris.vel_y = 0
 
 
-def draw_debris(debris_list):
+def draw_debris(debris_list: List[Debris]) -> None:
     """Draw all debris particles.
 
     Args:
-        debris_list: List of debris particle dictionaries
+        debris_list: List of Debris instances.
     """
     for debris in debris_list:
         pygame.draw.rect(
-            screen, WHITE,
-            (int(debris['x']), int(debris['y']), debris['size'], debris['size']),
+            _game.screen, WHITE,
+            (int(debris.x), int(debris.y), debris.size, debris.size),
             LINE_THICKNESS
         )
 
 
-def check_obstacle_collision(player_x, player_y, prev_player_y, obstacle):
+def check_obstacle_collision(player_x: float, player_y: float, prev_player_y: float, obstacle: Obstacle) -> bool:
     """Check if player is landing on top of a floating obstacle.
 
     Uses both current and previous position to detect if player passed through
     the obstacle between frames (prevents falling through at high velocities).
+
+    Args:
+        player_x: Player's current x position.
+        player_y: Player's current y position.
+        prev_player_y: Player's previous y position.
+        obstacle: Obstacle to check collision with.
+
+    Returns:
+        True if player is landing on the obstacle, False otherwise.
     """
     player_bottom = player_y + PLAYER_HEIGHT
     prev_player_bottom = prev_player_y + PLAYER_HEIGHT
     player_right = player_x + PLAYER_WIDTH
     player_left = player_x
 
-    obs_top = obstacle['y']
-    obs_bottom = obstacle['y'] + obstacle['height']
-    obs_left = obstacle['x']
-    obs_right = obstacle['x'] + obstacle['width']
+    obs_top = obstacle.y
+    obs_bottom = obstacle.y + obstacle.height
+    obs_left = obstacle.x
+    obs_right = obstacle.x + obstacle.width
 
     # Check if player is horizontally aligned with obstacle
     if player_right > obs_left and player_left < obs_right:
@@ -373,20 +434,27 @@ def check_obstacle_collision(player_x, player_y, prev_player_y, obstacle):
     return False
 
 
-def get_scroll_speed(score):
-    """Calculate scroll speed based on current score."""
+def get_scroll_speed(score: int) -> float:
+    """Calculate scroll speed based on current score.
+
+    Args:
+        score: Current game score.
+
+    Returns:
+        Scroll speed capped at MAX_SCROLL_SPEED.
+    """
     speed = BASE_SCROLL_SPEED + (score * SPEED_INCREMENT)
     return min(speed, MAX_SCROLL_SPEED)
 
 
-def reset_game():
+def reset_game() -> GameState:
     """Reset game state for a new game.
 
     Returns:
-        GameState: Fresh game state with player on ground and initial obstacles.
+        Fresh game state with player on ground and initial obstacles.
     """
     # Generate initial obstacles
-    obstacles = []
+    obstacles: List[Obstacle] = []
     first_obs = generate_obstacle(from_ground=True)
     obstacles.append(first_obs)
     last_obs = first_obs
@@ -407,9 +475,10 @@ def reset_game():
     )
 
 
-def main():
+def main() -> None:
+    """Main game loop."""
     # Initialize pygame
-    init_pygame()
+    game = init_pygame()
 
     # Initialize game state
     state = reset_game()
@@ -444,7 +513,7 @@ def main():
                     state.jump_held = False
                     # Cut the jump short if still moving upward
                     if state.player_velocity_y < 0:
-                        state.player_velocity_y *= 0.5
+                        state.player_velocity_y *= JUMP_CUT_MULTIPLIER
 
         # Only update game if not game over
         if not state.game_over:
@@ -468,36 +537,36 @@ def main():
                     state.game_over = True
                     state.debris = generate_debris(PLAYER_X, state.player_y)
                     pygame.mixer.music.stop()
-                    if crash_sound:
-                        crash_sound.play()
+                    if game.crash_sound:
+                        game.crash_sound.play()
 
             # Check obstacle collisions (landing on top)
             if not on_surface and state.player_velocity_y >= 0:
                 for obstacle in state.obstacles:
                     if check_obstacle_collision(PLAYER_X, state.player_y, prev_player_y, obstacle):
-                        state.player_y = obstacle['y'] - PLAYER_HEIGHT
+                        state.player_y = obstacle.y - PLAYER_HEIGHT
                         state.player_velocity_y = 0
                         state.is_jumping = False
                         on_surface = True
                         # Award point if first time landing on this obstacle
-                        if not obstacle['scored']:
-                            obstacle['scored'] = True
+                        if not obstacle.scored:
+                            obstacle.scored = True
                             state.score += 1
                         break
 
             # Move obstacles (speed increases with score)
             current_speed = get_scroll_speed(state.score)
             for obstacle in state.obstacles:
-                obstacle['x'] -= current_speed
+                obstacle.x -= current_speed
 
             # Remove off-screen obstacles and generate new ones
-            if state.obstacles and state.obstacles[0]['x'] + state.obstacles[0]['width'] < 0:
+            if state.obstacles and state.obstacles[0].x + state.obstacles[0].width < 0:
                 state.obstacles.pop(0)
 
             # Generate new obstacle if needed
             if state.obstacles:
                 last_obs = state.obstacles[-1]
-                if last_obs['x'] < SCREEN_WIDTH:
+                if last_obs.x < SCREEN_WIDTH:
                     new_obs = generate_obstacle(last_obs)
                     state.obstacles.append(new_obs)
 
@@ -506,7 +575,7 @@ def main():
             update_debris(state.debris)
 
         # Clear screen
-        screen.fill(BLACK)
+        game.screen.fill(BLACK)
 
         # Draw game objects
         draw_ground()
@@ -529,7 +598,7 @@ def main():
         pygame.display.flip()
 
         # Cap frame rate
-        clock.tick(FPS)
+        game.clock.tick(FPS)
 
     pygame.quit()
     sys.exit()

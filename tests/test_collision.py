@@ -1,21 +1,15 @@
 """Tests for collision detection."""
 import pytest
 
-from game import check_obstacle_collision, PLAYER_WIDTH, PLAYER_HEIGHT
+from game import check_obstacle_collision, PLAYER_WIDTH, PLAYER_HEIGHT, Obstacle
 
 
 class TestObstacleCollision:
     """Test cases for check_obstacle_collision function."""
 
     def create_obstacle(self, x, y, width, height):
-        """Helper to create an obstacle dict."""
-        return {
-            'x': x,
-            'y': y,
-            'width': width,
-            'height': height,
-            'scored': False
-        }
+        """Helper to create an Obstacle instance."""
+        return Obstacle(x=x, y=y, width=width, height=height, scored=False)
 
     def test_landing_on_top_of_obstacle(self):
         """Player landing directly on top of obstacle should collide."""
@@ -108,14 +102,8 @@ class TestPassThroughDetection:
     """Test cases for detecting when player passes through obstacle at high speed."""
 
     def create_obstacle(self, x, y, width, height):
-        """Helper to create an obstacle dict."""
-        return {
-            'x': x,
-            'y': y,
-            'width': width,
-            'height': height,
-            'scored': False
-        }
+        """Helper to create an Obstacle instance."""
+        return Obstacle(x=x, y=y, width=width, height=height, scored=False)
 
     def test_high_speed_pass_through_detected(self):
         """Player falling fast enough to skip past obstacle should still collide."""

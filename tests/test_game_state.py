@@ -61,7 +61,7 @@ class TestResetGame:
         """All obstacles should be unscored after reset."""
         state = reset_game()
         for obs in state.obstacles:
-            assert obs['scored'] is False
+            assert obs.scored is False
 
 
 class TestGameOverLogic:

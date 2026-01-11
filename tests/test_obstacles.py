@@ -2,7 +2,7 @@
 import pytest
 
 from game import (
-    generate_obstacle,
+    generate_obstacle, Obstacle,
     MIN_OBSTACLE_WIDTH, MAX_OBSTACLE_WIDTH,
     OBSTACLE_THICKNESS,
     MIN_GAP, MAX_GAP,
@@ -15,45 +15,50 @@ from game import (
 class TestObstacleGeneration:
     """Test cases for generate_obstacle function."""
 
-    def test_obstacle_has_required_keys(self):
-        """Generated obstacle should have all required keys."""
+    def test_obstacle_has_required_attributes(self):
+        """Generated obstacle should have all required attributes."""
         obstacle = generate_obstacle()
 
-        assert 'x' in obstacle
-        assert 'y' in obstacle
-        assert 'width' in obstacle
-        assert 'height' in obstacle
-        assert 'scored' in obstacle
+        assert hasattr(obstacle, 'x')
+        assert hasattr(obstacle, 'y')
+        assert hasattr(obstacle, 'width')
+        assert hasattr(obstacle, 'height')
+        assert hasattr(obstacle, 'scored')
+
+    def test_obstacle_is_dataclass(self):
+        """Generated obstacle should be an Obstacle dataclass."""
+        obstacle = generate_obstacle()
+        assert isinstance(obstacle, Obstacle)
 
     def test_obstacle_width_in_range(self):
         """Obstacle width should be within defined range."""
         for _ in range(50):
             obstacle = generate_obstacle()
-            assert MIN_OBSTACLE_WIDTH <= obstacle['width'] <= MAX_OBSTACLE_WIDTH
+            assert MIN_OBSTACLE_WIDTH <= obstacle.width <= MAX_OBSTACLE_WIDTH
 
     def test_obstacle_height_is_fixed(self):
         """Obstacle height should be fixed thickness."""
         for _ in range(50):
             obstacle = generate_obstacle()
-            assert obstacle['height'] == OBSTACLE_THICKNESS
+            assert obstacle.height == OBSTACLE_THICKNESS
 
     def test_obstacle_starts_offscreen(self):
         """First obstacle should start off-screen to the right."""
         obstacle = generate_obstacle()
-        assert obstacle['x'] >= SCREEN_WIDTH
+        assert obstacle.x >= SCREEN_WIDTH
 
     def test_obstacle_scored_initially_false(self):
         """New obstacle should have scored set to False."""
         obstacle = generate_obstacle()
-        assert obstacle['scored'] is False
+        assert obstacle.scored is False
 
     def test_from_ground_y_position(self):
         """Obstacle from ground should be reachable by jumping."""
         for _ in range(50):
             obstacle = generate_obstacle(from_ground=True)
             # Should be within jump range from ground
-            assert obstacle['y'] <= GROUND_Y
-            assert obstacle['y'] >= MIN_PLATFORM_Y
+            assert obstacle.y <= GROUND_Y
+            assert obstacle.y >= MIN_PLATFORM_Y
 
     def test_chained_obstacle_horizontal_gap(self):
         """Chained obstacle should maintain proper horizontal gap."""
@@ -61,7 +66,7 @@ class TestObstacleGeneration:
 
         for _ in range(50):
             second = generate_obstacle(last_obstacle=first)
-            gap = second['x'] - (first['x'] + first['width'])
+            gap = second.x - (first.x + first.width)
             assert MIN_GAP <= gap <= MAX_GAP
 
     def test_chained_obstacle_reachable_height(self):
@@ -70,7 +75,7 @@ class TestObstacleGeneration:
 
         for _ in range(50):
             second = generate_obstacle(last_obstacle=first)
-            height_diff = second['y'] - first['y']
+            height_diff = second.y - first.y
 
             # Player can jump up MAX_JUMP_HEIGHT or fall down
             # Going up (negative diff) should be within jump range
@@ -97,9 +102,9 @@ class TestObstacleGeneration:
 
         # Verify each obstacle has valid properties
         for obs in obstacles:
-            assert MIN_OBSTACLE_WIDTH <= obs['width'] <= MAX_OBSTACLE_WIDTH
-            assert obs['height'] == OBSTACLE_THICKNESS
-            assert obs['scored'] is False
+            assert MIN_OBSTACLE_WIDTH <= obs.width <= MAX_OBSTACLE_WIDTH
+            assert obs.height == OBSTACLE_THICKNESS
+            assert obs.scored is False
 
     def test_obstacle_y_within_bounds(self):
         """Obstacle Y position should stay within screen bounds."""
@@ -107,6 +112,6 @@ class TestObstacleGeneration:
 
         for _ in range(100):
             obstacle = generate_obstacle(last_obstacle=first)
-            assert obstacle['y'] >= MIN_PLATFORM_Y
-            assert obstacle['y'] <= MAX_PLATFORM_Y
+            assert obstacle.y >= MIN_PLATFORM_Y
+            assert obstacle.y <= MAX_PLATFORM_Y
             first = obstacle  # Chain them
