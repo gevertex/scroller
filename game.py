@@ -219,20 +219,30 @@ def draw_game_over():
     draw_text("PRESS ENTER TO RESET", SCREEN_HEIGHT // 3 + 50, size=16)
 
 
-def check_obstacle_collision(player_x, player_y, obstacle):
-    """Check if player is landing on top of a floating obstacle."""
+def check_obstacle_collision(player_x, player_y, prev_player_y, obstacle):
+    """Check if player is landing on top of a floating obstacle.
+
+    Uses both current and previous position to detect if player passed through
+    the obstacle between frames (prevents falling through at high velocities).
+    """
     player_bottom = player_y + PLAYER_HEIGHT
+    prev_player_bottom = prev_player_y + PLAYER_HEIGHT
     player_right = player_x + PLAYER_WIDTH
     player_left = player_x
 
     obs_top = obstacle['y']
+    obs_bottom = obstacle['y'] + obstacle['height']
     obs_left = obstacle['x']
     obs_right = obstacle['x'] + obstacle['width']
 
     # Check if player is horizontally aligned with obstacle
     if player_right > obs_left and player_left < obs_right:
-        # Check if player is landing on top (feet near platform top)
-        if player_bottom >= obs_top and player_bottom <= obs_top + 15:
+        # Check if player crossed through the obstacle top between frames
+        # Previous bottom was above obstacle top, current bottom is at or below it
+        if prev_player_bottom <= obs_top and player_bottom >= obs_top:
+            return True
+        # Also check if player is currently in the landing zone (for slow falls)
+        if player_bottom >= obs_top and player_bottom <= obs_bottom + 5:
             return True
     return False
 
@@ -307,6 +317,9 @@ def main():
 
         # Only update game if not game over
         if not game_over:
+            # Store previous position for collision detection
+            prev_player_y = player_y
+
             # Apply gravity
             player_velocity_y += GRAVITY
             player_y += player_velocity_y
@@ -327,7 +340,7 @@ def main():
             # Check obstacle collisions (landing on top)
             if not on_surface and player_velocity_y >= 0:  # Only check when falling
                 for obstacle in obstacles:
-                    if check_obstacle_collision(PLAYER_X, player_y, obstacle):
+                    if check_obstacle_collision(PLAYER_X, player_y, prev_player_y, obstacle):
                         player_y = obstacle['y'] - PLAYER_HEIGHT
                         player_velocity_y = 0
                         is_jumping = False
