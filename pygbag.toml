@@ -1,0 +1,9 @@
+# Pygbag configuration
+[project]
+name = "scroller"
+authors = [""]
+version = "1.0.0"
+
+[pygbag]
+# Entry point is main.py at project root (not in assets/)
+main = "main.py"
