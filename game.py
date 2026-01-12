@@ -217,6 +217,7 @@ class Game:
     font: Optional[pygame.font.Font]
     clock: pygame.time.Clock
     crash_sound: Optional[pygame.mixer.Sound]
+    background_music: Optional[pygame.mixer.Sound] = None
 
 
 # Global game instance (initialized at runtime)
@@ -331,13 +332,14 @@ def init_pygame() -> Game:
 
     # Initialize audio
     crash_sound = None
+    background_music = None
     try:
         pygame.mixer.init()
 
-        # Load and play background music
+        # Load background music as Sound (works better on Safari than mixer.music)
         try:
-            pygame.mixer.music.load(str(BACKGROUND_MUSIC_PATH))
-            pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+            background_music = pygame.mixer.Sound(str(BACKGROUND_MUSIC_PATH))
+            background_music.play(loops=-1)  # -1 means loop indefinitely
         except pygame.error as e:
             if not IS_WEB:
                 print(f"Could not load music: {e}")
@@ -353,7 +355,8 @@ def init_pygame() -> Game:
         if not IS_WEB:
             print(f"Could not initialize audio: {e}")
 
-    _game = Game(screen=screen, font=font, clock=clock, crash_sound=crash_sound)
+    _game = Game(screen=screen, font=font, clock=clock, crash_sound=crash_sound,
+                 background_music=background_music)
     return _game
 
 
@@ -859,10 +862,11 @@ async def main() -> None:
                     # Reset the game
                     state = reset_game()
                     # Restart background music
-                    try:
-                        pygame.mixer.music.play(-1)
-                    except Exception:
-                        pass
+                    if game.background_music:
+                        try:
+                            game.background_music.play(loops=-1)
+                        except Exception:
+                            pass
 
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -929,7 +933,8 @@ async def main() -> None:
                     state.debris = generate_debris(PLAYER_X, state.player_y)
                     # Stop music and play crash sound
                     try:
-                        pygame.mixer.music.stop()
+                        if game.background_music:
+                            game.background_music.stop()
                         if game.crash_sound:
                             game.crash_sound.play()
                     except Exception:
