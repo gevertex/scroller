@@ -234,7 +234,7 @@ def save_high_score(score: int) -> bool:
     """Save high score to file with tamper protection.
 
     Only saves if the new score is higher than the existing high score.
-    On web (Emscripten), high scores are not persisted.
+    On web (Emscripten), uses browser localStorage.
 
     Args:
         score: The high score to save.
@@ -243,10 +243,6 @@ def save_high_score(score: int) -> bool:
         True if saved successfully.
         False if score is not higher or file could not be written.
     """
-    # File system not available on web
-    if IS_WEB:
-        return False
-
     # Check if new score is actually higher than existing
     current_high = load_high_score()
     if score <= current_high:
@@ -256,6 +252,18 @@ def save_high_score(score: int) -> bool:
         "high_score": score,
         "signature": _compute_score_signature(score)
     }
+
+    if IS_WEB:
+        # Use browser localStorage on web
+        try:
+            import platform as plat
+            plat.window.localStorage.setItem(
+                "scroller_high_score", json.dumps(data)
+            )
+            return True
+        except Exception:
+            return False
+
     try:
         with open(HIGH_SCORE_PATH, "w") as f:
             json.dump(data, f)
@@ -269,11 +277,24 @@ def load_high_score() -> int:
 
     Returns:
         The high score if valid, 0 if file doesn't exist or is tampered.
-        On web (Emscripten), always returns 0.
+        On web (Emscripten), uses browser localStorage.
     """
-    # File system not available on web
     if IS_WEB:
-        return 0
+        # Use browser localStorage on web
+        try:
+            import platform as plat
+            stored = plat.window.localStorage.getItem("scroller_high_score")
+            if not stored:
+                return 0
+            data = json.loads(stored)
+            score = data.get("high_score", 0)
+            signature = data.get("signature", "")
+            expected_signature = _compute_score_signature(score)
+            if hmac.compare_digest(signature, expected_signature):
+                return score
+            return 0
+        except Exception:
+            return 0
 
     if not HIGH_SCORE_PATH.exists():
         return 0
