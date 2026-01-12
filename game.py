@@ -92,13 +92,13 @@ TRAIL_FADE_RATE = 0.08  # Base fade rate per frame
 if IS_WEB:
     # On web/pygbag, working directory is set to assets folder
     # Use simple filenames for audio (they're in the same folder as main.py)
-    BACKGROUND_MUSIC_PATH = Path("background_music.wav")
-    CRASH_SOUND_PATH = Path("crash.wav")
+    THEME_MUSIC_PATH = Path("theme.ogg")
+    CRASH_SOUND_PATH = Path("crash.ogg")
     HIGH_SCORE_PATH = Path("/data/data/scroller/highscore.json")
 else:
     ASSETS_DIR = Path(__file__).parent / "assets"
-    BACKGROUND_MUSIC_PATH = ASSETS_DIR / "background_music.wav"
-    CRASH_SOUND_PATH = ASSETS_DIR / "crash.wav"
+    THEME_MUSIC_PATH = ASSETS_DIR / "theme.ogg"
+    CRASH_SOUND_PATH = ASSETS_DIR / "crash.ogg"
     HIGH_SCORE_PATH = Path(__file__).parent / "highscore.json"
 
 # High score settings
@@ -359,7 +359,7 @@ def init_pygame() -> Game:
 
         # Load background music as Sound (works better on Safari than mixer.music)
         try:
-            background_music = pygame.mixer.Sound(str(BACKGROUND_MUSIC_PATH))
+            background_music = pygame.mixer.Sound(str(THEME_MUSIC_PATH))
             background_music.play(loops=-1)  # -1 means loop indefinitely
         except pygame.error as e:
             if not IS_WEB:
